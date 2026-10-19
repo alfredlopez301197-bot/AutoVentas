@@ -224,7 +224,7 @@ class _RedErpAppState extends State<RedErpApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
-      title: 'Red ERP',
+      title: 'AutoVentas',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.theme,
       routerConfig: _router,
