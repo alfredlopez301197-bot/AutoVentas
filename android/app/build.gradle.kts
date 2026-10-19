@@ -5,7 +5,7 @@ plugins {
     id("com.android.application")
 
     // Configuración de Firebase existente.
-    id("com.google.gms.google-services")
+
 
     // El plugin de Flutter debe ir después de Android.
     id("dev.flutter.flutter-gradle-plugin")
