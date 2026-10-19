@@ -230,7 +230,7 @@ class _RedErpAppState extends State<RedErpApp> {
       routerConfig: _router,
       builder: (context, child) {
         return Directionality(
-          textDirection: TextDirection.rtl,
+          textDirection: TextDirection.ltr,
           child: child ?? const SizedBox.shrink(),
         );
       },
