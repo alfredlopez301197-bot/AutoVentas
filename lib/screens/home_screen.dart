@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -14,73 +15,83 @@ class _QuickAction {
 
   final IconData icon;
   final String label;
-
-  /// Null means "not built yet" — tapping shows the coming-soon SnackBar.
   final String? route;
 }
 
-/// Single flat grid, 3 icons per row — the user explicitly rejected the
-/// categorized/sectioned layout tried in Round 10.
 const _quickActions = [
   _QuickAction(
     Icons.add_shopping_cart_rounded,
-    'طلبية مبيعات',
+    'Nuevo pedido',
     route: '/sales-order',
   ),
   _QuickAction(
     Icons.receipt_long_rounded,
-    'إصدار فاتورة',
+    'Facturar venta',
     route: '/sales-invoice',
   ),
   _QuickAction(
     Icons.payments_rounded,
-    'تحصيل من عميل',
+    'Registrar cobro',
     route: '/payment-entry',
   ),
-  _QuickAction(Icons.groups_rounded, 'إدارة العملاء', route: '/customers'),
+  _QuickAction(
+    Icons.groups_rounded,
+    'Clientes',
+    route: '/customers',
+  ),
   _QuickAction(
     Icons.event_note_rounded,
-    'فواتير المستحقات',
+    'Facturas pendientes',
     route: '/due-invoices',
   ),
   _QuickAction(
     Icons.add_location_alt_rounded,
-    'تسجيل زيارة',
+    'Registrar visita',
     route: '/customer-visits',
   ),
-  _QuickAction(Icons.note_alt_rounded, 'المذكرات', route: '/issues'),
+  _QuickAction(
+    Icons.note_alt_rounded,
+    'Incidencias y notas',
+    route: '/issues',
+  ),
   _QuickAction(
     Icons.person_add_rounded,
-    'تسجيل عميل جديد',
+    'Nuevo cliente',
     route: '/customer-registration',
   ),
   _QuickAction(
     Icons.local_shipping_rounded,
-    'طلب مواد',
+    'Solicitar materiales',
     route: '/material-request',
   ),
-  _QuickAction(Icons.wallet_rounded, 'تسجيل مصروف', route: '/expenses'),
+  _QuickAction(
+    Icons.wallet_rounded,
+    'Registrar gasto',
+    route: '/expenses',
+  ),
   _QuickAction(
     Icons.account_balance_wallet_rounded,
-    'الخزنة',
+    'Caja',
     route: '/treasury',
   ),
   _QuickAction(
     Icons.fact_check_rounded,
-    'بانتظار موافقتي',
+    'Aprobaciones pendientes',
     route: '/pending-approvals',
   ),
-  _QuickAction(Icons.history_rounded, 'حركة المخزون', route: '/stock-movement'),
+  _QuickAction(
+    Icons.history_rounded,
+    'Movimientos de inventario',
+    route: '/stock-movement',
+  ),
 ];
 
-/// Shown instead of [_quickActions] for a `WF - Region Manager` — full
-/// parity with the rep's own list (a region manager does the same actions
-/// a rep does — orders, invoices, expenses, customers — plus their own
-/// team-oversight entry point on top). Previously this was a curated
-/// subset assuming managers only approve/oversee; the business explicitly
-/// wants managers able to do everything a rep can do, not just review it.
 const _managerQuickActions = [
-  _QuickAction(Icons.groups_rounded, 'لوحة فريقي', route: '/team-dashboard'),
+  _QuickAction(
+    Icons.groups_rounded,
+    'Mi equipo',
+    route: '/team-dashboard',
+  ),
   ..._quickActions,
 ];
 
@@ -115,10 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _navIndex = 0;
   int _unreadNotifications = 0;
 
-  // Default text stays if `/me` fails or doesn't return a usable name —
-  // this is cosmetic, not a blocking failure. Response shape is unconfirmed,
-  // see docs/API_INTEGRATION_NOTES.md.
-  String _displayName = 'أهلًا،  ...';
+  String _displayName = 'Hola';
 
   List<_Activity> _activities = [];
   bool _loadingActivities = true;
@@ -142,77 +150,77 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadTreasuries();
     _loadRole();
     _loadPerformance();
-    // Fire-and-forget — warms the same caches Customers/Sales Orders/
-    // Sales Invoices/... read from, so opening one later on a weak
-    // connection paints instantly instead of waiting on a live call.
     PrefetchService.warmCachesOnce();
   }
 
-  /// A region manager gets a different home screen entirely (team-focused
-  /// quick actions instead of a rep's data-entry ones) — see
-  /// [_buildQuickActions]. `WF - Region Manager` is the same real role
-  /// already used to gate approval actions generically everywhere else in
-  /// this app; nothing new to define here, just read it.
   Future<void> _loadRole() async {
     try {
       final roles = await AuthService.currentUserRoles();
       if (!mounted) return;
+
       setState(() {
         _isRegionManager = roles.contains('WF - Region Manager');
         _resolvingRole = false;
       });
     } catch (_) {
-      if (mounted) setState(() => _resolvingRole = false);
+      if (mounted) {
+        setState(() => _resolvingRole = false);
+      }
     }
   }
 
-  /// This month's target vs. achieved for the current rep — a manager
-  /// doesn't get this card (they get a whole team dashboard instead), see
-  /// [_buildPerformanceCard].
   Future<void> _loadPerformance() async {
     try {
       final salesPerson = await ErpService.resolveCurrentSalesPerson();
+
       if (salesPerson == null) {
-        if (mounted) setState(() => _loadingPerformance = false);
+        if (mounted) {
+          setState(() => _loadingPerformance = false);
+        }
         return;
       }
-      final result = await ErpService.getMonthPerformanceForSalesPerson(
-        salesPerson,
-      );
+
+      final result =
+          await ErpService.getMonthPerformanceForSalesPerson(salesPerson);
+
       if (!mounted) return;
+
       setState(() {
         _performance = result;
         _loadingPerformance = false;
       });
     } catch (_) {
-      if (mounted) setState(() => _loadingPerformance = false);
+      if (mounted) {
+        setState(() => _loadingPerformance = false);
+      }
     }
   }
 
   Future<void> _loadTreasuries() async {
     setState(() => _loadingTreasuries = true);
+
     try {
       final list = await fetchTreasuries(limit: 6);
+
       if (!mounted) return;
       setState(() => _treasuries = list);
+
       final balances = await fetchTreasuryBalances(
         list.map((t) => t.name).toList(),
       );
-      if (mounted) setState(() => _treasuryBalances = balances);
+
+      if (mounted) {
+        setState(() => _treasuryBalances = balances);
+      }
     } catch (_) {
-      // Silent — the section just shows its empty state, see _buildTreasurySection.
+      // Si ocurre un error, se muestra el estado vacío.
     } finally {
-      if (mounted) setState(() => _loadingTreasuries = false);
+      if (mounted) {
+        setState(() => _loadingTreasuries = false);
+      }
     }
   }
 
-  /// Pulls the rep's most recent documents across the three doctypes this
-  /// app actually creates (Sales Invoice/Payment Entry/Sales Order),
-  /// merges them by creation time, and shows the newest few — real data
-  /// instead of a hardcoded feed. There's no dedicated "activity feed"
-  /// endpoint, so this is assembled client-side from doctypes already used
-  /// elsewhere in the app; the server's own permission engine still decides
-  /// which documents this user can see (same as everywhere else in the app).
   Future<void> _loadRecentActivities() async {
     setState(() => _loadingActivities = true);
 
@@ -220,21 +228,21 @@ class _HomeScreenState extends State<HomeScreen> {
       _fetchActivitySource(
         doctype: 'Sales Invoice',
         icon: Icons.receipt_long_rounded,
-        title: 'فاتورة جديدة',
+        title: 'Nueva factura',
         subtitleFields: const ['customer_name', 'customer'],
         amountField: 'grand_total',
       ),
       _fetchActivitySource(
         doctype: 'Payment Entry',
         icon: Icons.payments_rounded,
-        title: 'تحصيل من عميل',
+        title: 'Cobro registrado',
         subtitleFields: const ['party_name', 'party'],
         amountField: 'paid_amount',
       ),
       _fetchActivitySource(
         doctype: 'Sales Order',
         icon: Icons.local_shipping_rounded,
-        title: 'طلبية جديدة',
+        title: 'Nuevo pedido',
         subtitleFields: const ['customer_name', 'customer'],
         amountField: 'grand_total',
       ),
@@ -247,6 +255,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
     if (!mounted) return;
+
     setState(() {
       _activities = combined.take(6).toList();
       _loadingActivities = false;
@@ -267,9 +276,19 @@ class _HomeScreenState extends State<HomeScreen> {
         orderBy: 'creation desc',
         limit: 5,
       );
+
       return list.map((d) {
         final amount = d[amountField];
-        String subtitle = doctype;
+
+        String subtitle;
+        if (doctype == 'Sales Invoice') {
+          subtitle = 'Factura de venta';
+        } else if (doctype == 'Payment Entry') {
+          subtitle = 'Cobro';
+        } else {
+          subtitle = 'Pedido de venta';
+        }
+
         for (final field in subtitleFields) {
           final value = d[field] as String?;
           if (value != null && value.isNotEmpty) {
@@ -277,13 +296,14 @@ class _HomeScreenState extends State<HomeScreen> {
             break;
           }
         }
+
         return _Activity(
           doctype: doctype,
           name: d['name'] as String,
           icon: icon,
           title: title,
           subtitle: subtitle,
-          amount: amount != null ? '$amount ج.م' : '—',
+          amount: amount != null ? '\$$amount' : '—',
           creation: DateTime.tryParse((d['creation'] as String?) ?? ''),
         );
       }).toList();
@@ -294,12 +314,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _relativeTime(DateTime? time) {
     if (time == null) return '';
+
     final diff = DateTime.now().difference(time);
-    if (diff.inMinutes < 1) return 'الآن';
-    if (diff.inMinutes < 60) return 'منذ ${diff.inMinutes} دقيقة';
-    if (diff.inHours < 24) return 'منذ ${diff.inHours} ساعة';
-    if (diff.inDays < 7) return 'منذ ${diff.inDays} يوم';
-    return '${time.year}-${time.month.toString().padLeft(2, '0')}-${time.day.toString().padLeft(2, '0')}';
+
+    if (diff.inMinutes < 1) return 'Ahora';
+    if (diff.inMinutes < 60) {
+      return 'Hace ${diff.inMinutes} min';
+    }
+    if (diff.inHours < 24) {
+      return 'Hace ${diff.inHours} h';
+    }
+    if (diff.inDays < 7) {
+      return 'Hace ${diff.inDays} días';
+    }
+
+    return '${time.year}-'
+        '${time.month.toString().padLeft(2, '0')}-'
+        '${time.day.toString().padLeft(2, '0')}';
   }
 
   Future<void> _loadUnreadNotifications() async {
@@ -312,33 +343,38 @@ class _HomeScreenState extends State<HomeScreen> {
         fields: const ['name'],
         limit: 100,
       );
+
       if (!mounted) return;
       setState(() => _unreadNotifications = unread.length);
     } catch (_) {
-      // Silent — cosmetic badge only, see _loadProfile above.
+      // El contador de notificaciones no bloquea la pantalla.
     }
   }
 
   Future<void> _loadProfile() async {
     try {
       final me = await AuthService.me();
-      final fullName =
-          me['full_name'] ??
+
+      final fullName = me['full_name'] ??
           me['user_full_name'] ??
           (me['first_name'] != null
               ? '${me['first_name']} ${me['last_name'] ?? ''}'.trim()
               : null);
+
       if (!mounted || fullName == null) return;
+
       final name = fullName.toString().trim();
       if (name.isEmpty) return;
-      setState(() => _displayName = 'أهلًا، $name');
+
+      setState(() => _displayName = 'Hola, $name');
     } catch (_) {
-      // Silent — cosmetic only, see comment above.
+      // Se conserva el saludo predeterminado.
     }
   }
 
   Future<void> _openNotifications() async {
     await context.push('/notifications');
+
     if (!mounted) return;
     setState(() => _unreadNotifications = 0);
   }
@@ -349,7 +385,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _showComingSoon() {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('هذه الشاشة قيد التطوير حاليًا')),
+      const SnackBar(
+        content: Text('Esta pantalla todavía está en desarrollo.'),
+      ),
     );
   }
 
@@ -369,7 +407,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 20),
             _buildTreasurySection(),
             const SizedBox(height: 24),
-            _buildSectionTitle('إجراءات سريعة'),
+            _buildSectionTitle('Accesos rápidos'),
             const SizedBox(height: 12),
             _resolvingRole
                 ? const SizedBox(
@@ -388,7 +426,7 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildPerformanceCard(),
             ],
             const SizedBox(height: 24),
-            _buildSectionTitle('آخر النشاطات'),
+            _buildSectionTitle('Actividad reciente'),
             const SizedBox(height: 12),
             _buildRecentActivities(),
           ],
@@ -414,23 +452,23 @@ class _HomeScreenState extends State<HomeScreen> {
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home_rounded),
-            label: 'الرئيسية',
+            label: 'Inicio',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.receipt_long_rounded),
-            label: 'الطلبيات',
+            label: 'Pedidos',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.account_balance_wallet_rounded),
-            label: 'الخزنة',
+            label: 'Caja',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.notifications_rounded),
-            label: 'الإشعارات',
+            label: 'Avisos',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_rounded),
-            label: 'الحساب',
+            label: 'Cuenta',
           ),
         ],
       ),
@@ -455,26 +493,21 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _displayName,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.black,
-                ),
-              ),
-            ],
+          child: Text(
+            _displayName,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppColors.black,
+            ),
           ),
         ),
         const ServerStatusIcon(),
         const SizedBox(width: 4),
         Semantics(
           label: _unreadNotifications > 0
-              ? 'الإشعارات، $_unreadNotifications غير مقروءة'
-              : 'الإشعارات',
+              ? 'Avisos: $_unreadNotifications sin leer'
+              : 'Avisos',
           button: true,
           child: Material(
             color: AppColors.white,
@@ -528,11 +561,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Real replacement for the old "قريبًا" placeholder — a horizontal
-  /// carousel of the treasuries this account actually has, via `Treasury`
-  /// (see treasury_screen.dart for the confirmed field names). Which
-  /// treasuries come back is entirely up to the server's own permission
-  /// logic for this DocType; this just displays whatever it returns.
   Widget _buildTreasurySection() {
     if (_loadingTreasuries) {
       return const Padding(
@@ -566,8 +594,11 @@ class _HomeScreenState extends State<HomeScreen> {
             SizedBox(width: 12),
             Expanded(
               child: Text(
-                'لا توجد خزائن مرتبطة بحسابك حاليًا',
-                style: TextStyle(color: AppColors.midGray, fontSize: 12.5),
+                'No hay cajas asociadas a tu cuenta actualmente.',
+                style: TextStyle(
+                  color: AppColors.midGray,
+                  fontSize: 12.5,
+                ),
               ),
             ),
           ],
@@ -583,6 +614,7 @@ class _HomeScreenState extends State<HomeScreen> {
         separatorBuilder: (context, i) => const SizedBox(width: 12),
         itemBuilder: (context, i) {
           final treasury = _treasuries[i];
+
           return GestureDetector(
             onTap: () => treasury.account == null
                 ? context.push('/treasury')
@@ -598,7 +630,10 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [AppColors.black, Color(0xFF2A2A2A)],
+                  colors: [
+                    AppColors.black,
+                    Color(0xFF2A2A2A),
+                  ],
                   begin: Alignment.topRight,
                   end: Alignment.bottomLeft,
                 ),
@@ -619,8 +654,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       Builder(
                         builder: (context) {
                           final balance = _treasuryBalances[treasury.name];
+
                           return Text(
-                            balance != null ? balance.toStringAsFixed(0) : '—',
+                            balance != null
+                                ? balance.toStringAsFixed(0)
+                                : '—',
                             style: const TextStyle(
                               color: AppColors.white,
                               fontSize: 17,
@@ -682,6 +720,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildQuickActions() {
     final actions = _isRegionManager ? _managerQuickActions : _quickActions;
+
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -694,6 +733,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       itemBuilder: (context, i) {
         final action = actions[i];
+
         return Semantics(
           button: true,
           label: action.label,
@@ -737,10 +777,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Real target-vs-achieved for this calendar month — see
-  /// [ErpService.getMonthPerformanceForSalesPerson] for exactly how each
-  /// number is derived (and why a missing target shows as its own state,
-  /// never a misleading 0/0).
   Widget _buildPerformanceCard() {
     if (_loadingPerformance) {
       return const Padding(
@@ -774,28 +810,35 @@ class _HomeScreenState extends State<HomeScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'أدائي هذا الشهر',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+            'Mi rendimiento este mes',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 14,
+            ),
           ),
           const SizedBox(height: 10),
           if (target == null) ...[
             Text(
-              'لا يوجد هدف محدد لهذا الشهر — المحقق: ${achieved.toStringAsFixed(0)} ج.م',
-              style: const TextStyle(color: AppColors.midGray, fontSize: 12.5),
+              'No hay una meta definida este mes. '
+              'Ventas realizadas: \$${achieved.toStringAsFixed(0)}',
+              style: const TextStyle(
+                color: AppColors.midGray,
+                fontSize: 12.5,
+              ),
             ),
           ] else ...[
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '${achieved.toStringAsFixed(0)} ج.م',
+                  '\$${achieved.toStringAsFixed(0)}',
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 15,
                   ),
                 ),
                 Text(
-                  'الهدف: ${target.toStringAsFixed(0)} ج.م',
+                  'Meta: \$${target.toStringAsFixed(0)}',
                   style: const TextStyle(
                     color: AppColors.midGray,
                     fontSize: 12,
@@ -847,7 +890,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         child: const Center(
           child: Text(
-            'لا توجد نشاطات حديثة',
+            'No hay actividad reciente.',
             style: TextStyle(color: AppColors.midGray),
           ),
         ),
