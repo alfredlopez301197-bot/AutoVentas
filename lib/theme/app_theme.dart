@@ -9,7 +9,7 @@ class AppColors {
   static const Color white = Color(0xFFFFFFFF);
   static const Color lightGray = Color(0xFFF5F5F5);
   static const Color midGray = Color(0xFF7A7A7A);
-  static const Color accent = Color(0xFFD62828);
+  static const Color accent = Color(0xFFD6AD58);
   static const Color success = Color(0xFF1E7A3C);
 }
 
