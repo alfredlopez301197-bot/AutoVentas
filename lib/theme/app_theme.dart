@@ -27,7 +27,7 @@ class AppTheme {
   static ThemeData get theme {
     final base = ThemeData(useMaterial3: true, brightness: Brightness.light);
 
-    final textTheme = GoogleFonts.ibmPlexSansArabicTextTheme(
+    final textTheme = GoogleFonts.interTextTheme(
       base.textTheme,
     ).apply(bodyColor: AppColors.black, displayColor: AppColors.black);
 
@@ -80,7 +80,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.button),
           ),
-          textStyle: GoogleFonts.ibmPlexSansArabic(
+          textStyle: GoogleFonts.inter(
             fontSize: 16,
             fontWeight: FontWeight.w700,
           ),
@@ -129,11 +129,11 @@ class AppTheme {
         unselectedItemColor: AppColors.midGray,
         type: BottomNavigationBarType.fixed,
         showUnselectedLabels: true,
-        selectedLabelStyle: GoogleFonts.ibmPlexSansArabic(
+        selectedLabelStyle: GoogleFonts.inter(
           fontSize: 12,
           fontWeight: FontWeight.w600,
         ),
-        unselectedLabelStyle: GoogleFonts.ibmPlexSansArabic(fontSize: 12),
+        unselectedLabelStyle: GoogleFonts.inter(fontSize: 12),
         elevation: 8,
       ),
     );
