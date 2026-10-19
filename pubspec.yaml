@@ -1,5 +1,6 @@
-name: red_erp
-description: "RedLine mobile ERP application for field sales and operations."
+
+name: autoventas
+description: "AutoVentas: aplicación móvil para ventas, clientes, inventario y gestión de rutas."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
