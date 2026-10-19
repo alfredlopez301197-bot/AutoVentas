@@ -1,28 +1,15 @@
+
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:local_auth/local_auth.dart';
-
-import 'dart:async';
 
 import '../services/auth_service.dart';
 import '../services/push_notification_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_logo.dart';
 
-/// The login screen — also the app's re-entry point every time it's
-/// reopened with a stored session (see SplashScreen, which always routes
-/// here rather than silently logging in). Two ways in, by design:
-///
-/// 1. **Fingerprint** (only shown when a session is stored AND the
-///    "قفل الدخول بالبصمة" setting is on AND the device supports it) —
-///    an explicit button, not an automatic OS prompt on screen load. Success
-///    calls `AuthService.refreshSession()` using the stored refresh token.
-/// 2. **Manual form** — always available. The domain field is pre-filled
-///    from `AuthService.currentDomain()` when known, so a returning user
-///    only has to retype username/password, never the domain.
-///
-/// Either path lands on `/welcome` (not `/home` directly) — see
-/// welcome_screen.dart.
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
@@ -32,6 +19,7 @@ class AuthScreen extends StatefulWidget {
 
 class _AuthScreenState extends State<AuthScreen> {
   final _formKey = GlobalKey<FormState>();
+
   final _domainController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -56,6 +44,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _bootstrap() async {
     final domain = await AuthService.currentDomain();
+
     if (domain != null && mounted) {
       _domainController.text = domain;
     }
@@ -67,9 +56,12 @@ class _AuthScreenState extends State<AuthScreen> {
     if (!biometricEnabled) return;
 
     bool supported = false;
+
     try {
       final auth = LocalAuthentication();
-      supported = (await auth.canCheckBiometrics) || (await auth.isDeviceSupported());
+      supported =
+          (await auth.canCheckBiometrics) ||
+          (await auth.isDeviceSupported());
     } catch (_) {
       supported = false;
     }
@@ -86,54 +78,55 @@ class _AuthScreenState extends State<AuthScreen> {
 
     try {
       final auth = LocalAuthentication();
+
       final confirmed = await auth.authenticate(
-        localizedReason: 'أكّد هويتك للدخول إلى حسابك',
+        localizedReason: 'Confirma tu identidad para entrar a tu cuenta',
         persistAcrossBackgrounding: true,
       );
+
       if (!confirmed) {
         if (!mounted) return;
         setState(() => _biometricBusy = false);
         return;
       }
 
-      // Fingerprint already confirmed it's really them — a network refresh
-      // failing here must NOT keep them locked out. Try it, but only a
-      // genuine server rejection (session actually invalid) should block
-      // entry; a connectivity failure just means the existing stored
-      // access token is used as-is, and `ErpService`'s own 401-refresh-retry
-      // transparently catches up the moment a real request goes out once
-      // back online.
       try {
         await AuthService.refreshSession();
       } on AuthException catch (e) {
         if (e.serverRejected) rethrow;
       }
+
       unawaited(PushNotificationService.registerForCurrentUser());
+
       if (!mounted) return;
       context.go('/welcome');
     } on AuthException catch (e) {
-      // Only wipe the stored session when the server actually rejected it
-      // (expired/invalid) — a network hiccup shouldn't cost the user their
-      // saved login, and the fingerprint option should stay available to
-      // retry.
       if (e.serverRejected) {
         await AuthService.clearSession();
-        if (mounted) setState(() => _showBiometricOption = false);
+        if (mounted) {
+          setState(() => _showBiometricOption = false);
+        }
       }
+
       if (!mounted) return;
+
       if (e.accessRestricted) {
         context.go('/access-restricted', extra: e.message);
         return;
       }
+
       setState(() {
         _biometricBusy = false;
         _errorText = e.message;
       });
     } catch (_) {
       if (!mounted) return;
+
       setState(() {
         _biometricBusy = false;
-        _errorText = 'تعذّر تأكيد البصمة، حاول مرة أخرى أو سجّل الدخول يدويًا.';
+        _errorText =
+            'No se pudo confirmar tu huella. Inténtalo de nuevo '
+            'o inicia sesión manualmente.';
       });
     }
   }
@@ -143,14 +136,17 @@ class _AuthScreenState extends State<AuthScreen> {
     _domainController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
+
     _domainFocus.dispose();
     _usernameFocus.dispose();
     _passwordFocus.dispose();
+
     super.dispose();
   }
 
   Future<void> _handleLogin() async {
     setState(() => _autovalidate = true);
+
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
     setState(() {
@@ -164,26 +160,31 @@ class _AuthScreenState extends State<AuthScreen> {
         username: _usernameController.text.trim(),
         password: _passwordController.text,
       );
+
       unawaited(PushNotificationService.registerForCurrentUser());
 
       if (!mounted) return;
       context.go('/welcome');
     } on AuthException catch (e) {
       if (!mounted) return;
+
       if (e.accessRestricted) {
         setState(() => _isLoading = false);
         context.go('/access-restricted', extra: e.message);
         return;
       }
+
       setState(() {
         _isLoading = false;
         _errorText = e.message;
       });
     } catch (_) {
       if (!mounted) return;
+
       setState(() {
         _isLoading = false;
-        _errorText = 'حدث خطأ غير متوقع، حاول مرة أخرى لاحقًا.';
+        _errorText =
+            'Ocurrió un error inesperado. Inténtalo de nuevo más tarde.';
       });
     }
   }
@@ -191,7 +192,10 @@ class _AuthScreenState extends State<AuthScreen> {
   void _handleForgotPassword() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('هذه الخاصية غير متاحة حاليًا، تواصل مع الدعم الفني'),
+        content: Text(
+          'Esta función todavía no está disponible. '
+          'Contacta con el administrador de tu empresa.',
+        ),
       ),
     );
   }
@@ -213,38 +217,69 @@ class _AuthScreenState extends State<AuthScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 16),
+
+                  // Conservamos el logotipo original temporalmente.
                   Center(
                     child: Container(
                       width: 72,
                       height: 72,
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
-                          colors: [AppColors.black, Color(0xFF2A2A2A)],
+                          colors: [
+                            AppColors.black,
+                            Color(0xFF2A2A2A),
+                          ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
                         borderRadius: BorderRadius.circular(24),
                       ),
                       child: const Center(
-                        child: AppLogo(size: 38, color: AppColors.white),
+                        child: AppLogo(
+                          size: 38,
+                          color: AppColors.white,
+                        ),
                       ),
                     ),
                   ),
+
+                  const SizedBox(height: 12),
+
+                  const Center(
+                    child: Text(
+                      'PANDA',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 3,
+                        color: AppColors.black,
+                      ),
+                    ),
+                  ),
+
                   const SizedBox(height: 24),
+
                   const Text(
-                    'تسجيل الدخول',
+                    'Iniciar sesión',
                     style: TextStyle(
                       fontSize: 26,
                       fontWeight: FontWeight.w800,
                       color: AppColors.black,
                     ),
                   ),
+
                   const SizedBox(height: 8),
+
                   const Text(
-                    'ادخل بيانات شركتك للمتابعة',
-                    style: TextStyle(fontSize: 14, color: AppColors.midGray),
+                    'Introduce los datos de tu empresa para continuar',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: AppColors.midGray,
+                    ),
                   ),
+
                   const SizedBox(height: 28),
+
                   if (_showBiometricOption) ...[
                     _buildBiometricOption(),
                     const SizedBox(height: 20),
@@ -254,8 +289,11 @@ class _AuthScreenState extends State<AuthScreen> {
                         Padding(
                           padding: EdgeInsets.symmetric(horizontal: 10),
                           child: Text(
-                            'أو سجّل الدخول يدويًا',
-                            style: TextStyle(color: AppColors.midGray, fontSize: 12),
+                            'O inicia sesión manualmente',
+                            style: TextStyle(
+                              color: AppColors.midGray,
+                              fontSize: 12,
+                            ),
                           ),
                         ),
                         Expanded(child: Divider()),
@@ -264,6 +302,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     const SizedBox(height: 20),
                   ] else
                     const SizedBox(height: 4),
+
                   TextFormField(
                     controller: _domainController,
                     focusNode: _domainFocus,
@@ -271,39 +310,47 @@ class _AuthScreenState extends State<AuthScreen> {
                     textInputAction: TextInputAction.next,
                     autocorrect: false,
                     autofillHints: const [AutofillHints.url],
-                    onFieldSubmitted: (_) => _usernameFocus.requestFocus(),
+                    onFieldSubmitted: (_) =>
+                        _usernameFocus.requestFocus(),
                     decoration: const InputDecoration(
-                      labelText: 'دومين الشركة',
-                      hintText: 'مثال: company.redtch.com',
+                      labelText: 'Dominio de la empresa',
+                      hintText: 'Ej.: empresa.tudominio.com',
                       prefixIcon: Icon(
                         Icons.dns_rounded,
                         color: AppColors.midGray,
                       ),
                     ),
-                    validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'برجاء إدخال دومين الشركة'
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty)
+                        ? 'Introduce el dominio de la empresa'
                         : null,
                   ),
+
                   const SizedBox(height: 16),
+
                   TextFormField(
                     controller: _usernameController,
                     focusNode: _usernameFocus,
                     textInputAction: TextInputAction.next,
                     autocorrect: false,
                     autofillHints: const [AutofillHints.username],
-                    onFieldSubmitted: (_) => _passwordFocus.requestFocus(),
+                    onFieldSubmitted: (_) =>
+                        _passwordFocus.requestFocus(),
                     decoration: const InputDecoration(
-                      labelText: 'اسم المستخدم',
+                      labelText: 'Usuario',
                       prefixIcon: Icon(
                         Icons.person_outline_rounded,
                         color: AppColors.midGray,
                       ),
                     ),
-                    validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'برجاء إدخال اسم المستخدم'
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty)
+                        ? 'Introduce tu nombre de usuario'
                         : null,
                   ),
+
                   const SizedBox(height: 16),
+
                   TextFormField(
                     controller: _passwordController,
                     focusNode: _passwordFocus,
@@ -314,7 +361,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     autofillHints: const [AutofillHints.password],
                     onFieldSubmitted: (_) => _handleLogin(),
                     decoration: InputDecoration(
-                      labelText: 'كلمة المرور',
+                      labelText: 'Contraseña',
                       prefixIcon: const Icon(
                         Icons.lock_outline_rounded,
                         color: AppColors.midGray,
@@ -327,17 +374,19 @@ class _AuthScreenState extends State<AuthScreen> {
                           color: AppColors.midGray,
                         ),
                         tooltip: _obscurePassword
-                            ? 'إظهار كلمة المرور'
-                            : 'إخفاء كلمة المرور',
+                            ? 'Mostrar contraseña'
+                            : 'Ocultar contraseña',
                         onPressed: () => setState(
                           () => _obscurePassword = !_obscurePassword,
                         ),
                       ),
                     ),
-                    validator: (v) => (v == null || v.isEmpty)
-                        ? 'برجاء إدخال كلمة المرور'
+                    validator: (v) =>
+                        (v == null || v.isEmpty)
+                        ? 'Introduce tu contraseña'
                         : null,
                   ),
+
                   if (_errorText != null) ...[
                     const SizedBox(height: 12),
                     Semantics(
@@ -364,7 +413,9 @@ class _AuthScreenState extends State<AuthScreen> {
                       ),
                     ),
                   ],
+
                   const SizedBox(height: 28),
+
                   ElevatedButton(
                     onPressed: _isLoading ? null : _handleLogin,
                     child: _isLoading
@@ -376,13 +427,15 @@ class _AuthScreenState extends State<AuthScreen> {
                               color: AppColors.white,
                             ),
                           )
-                        : const Text('تسجيل الدخول'),
+                        : const Text('Iniciar sesión'),
                   ),
+
                   const SizedBox(height: 16),
+
                   Center(
                     child: TextButton(
                       onPressed: _handleForgotPassword,
-                      child: const Text('هل نسيت كلمة المرور؟'),
+                      child: const Text('¿Olvidaste tu contraseña?'),
                     ),
                   ),
                 ],
@@ -420,26 +473,41 @@ class _AuthScreenState extends State<AuthScreen> {
                           color: AppColors.white,
                         ),
                       )
-                    : const Icon(Icons.fingerprint_rounded, color: AppColors.white),
+                    : const Icon(
+                        Icons.fingerprint_rounded,
+                        color: AppColors.white,
+                      ),
               ),
+
               const SizedBox(width: 14),
+
               const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'الدخول بالبصمة',
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                      'Acceso con huella',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                      ),
                     ),
                     SizedBox(height: 2),
                     Text(
-                      'استخدم بصمتك للدخول بسرعة',
-                      style: TextStyle(color: AppColors.midGray, fontSize: 12),
+                      'Usa tu huella para entrar rápidamente',
+                      style: TextStyle(
+                        color: AppColors.midGray,
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_left_rounded, color: AppColors.midGray),
+
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.midGray,
+              ),
             ],
           ),
         ),
