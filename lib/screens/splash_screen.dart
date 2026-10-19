@@ -104,7 +104,7 @@ class _SplashScreenState extends State<SplashScreen>
                         AppLogo(size: 96, color: AppColors.white),
                         SizedBox(height: 16),
                         Text(
-                          'REDLINE',
+                          'PANDA',
                           style: TextStyle(
                             color: AppColors.white,
                             fontSize: 22,
@@ -121,7 +121,7 @@ class _SplashScreenState extends State<SplashScreen>
                   child: Transform.scale(
                     scale: 0.9 + 0.1 * textOpacity,
                     child: const Text(
-                      'مرحباً',
+                      'AutoVentas',
                       style: TextStyle(
                         color: AppColors.white,
                         fontSize: 40,
