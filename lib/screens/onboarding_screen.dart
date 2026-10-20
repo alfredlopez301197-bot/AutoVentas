@@ -1,34 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../theme/app_theme.dart';
-
-class _OnboardPage {
-  const _OnboardPage(this.icon, this.title, this.description);
-
-  final IconData icon;
-  final String title;
-  final String description;
-}
-
-const _pages = [
-  _OnboardPage(
-    Icons.point_of_sale_rounded,
-    'إدارة كاملة لعمليات البيع',
-    'أصدر الفواتير وتابع الطلبيات والعملاء من مكان واحد بسهولة تامة.',
-  ),
-  _OnboardPage(
-    Icons.account_balance_wallet_rounded,
-    'خزنة وتحصيلات لحظية',
-    'تابع رصيدك ومصروفاتك وتحصيلاتك اليومية أولًا بأول.',
-  ),
-  _OnboardPage(
-    Icons.sync_rounded,
-    'متصل دائمًا مع ERPNext',
-    'كل بياناتك تتزامن مباشرة مع نظام إدارة المؤسسة الخاص بشركتك.',
-  ),
-];
-
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -37,127 +9,173 @@ class OnboardingScreen extends StatefulWidget {
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
-  final _pageController = PageController();
-  int _index = 0;
+  final PageController _pageController = PageController();
+  int _currentPage = 0;
 
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
+  // Textos e íconos adaptados para Panda
+  final List<Map<String, String>> _onboardingData = [
+    {
+      "title": "Control de Ventas Panda",
+      "description": "Lleva el registro exacto de tus pedidos y objetivos de venta al instante.",
+    },
+    {
+      "title": "Gestión de Clientes",
+      "description": "Administra tus rutas y mantén la información de tus clientes siempre actualizada.",
+    },
+    {
+      "title": "Sincronización en Tiempo Real",
+      "description": "Toda tu actividad se sincroniza con la base de datos de manera automática.",
+    }
+  ];
+
+  void _goToLogin() {
+    // Al terminar o saltar, va a la pantalla de Auth
+    context.go('/auth');
   }
-
-  void _goToAuth() => context.go('/auth');
 
   @override
   Widget build(BuildContext context) {
-    final isLast = _index == _pages.length - 1;
-
     return Scaffold(
-      backgroundColor: AppColors.white,
-      body: SafeArea(
-        child: Column(
-          children: [
-            Align(
-              alignment: AlignmentDirectional.topEnd,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: TextButton(
-                  onPressed: _goToAuth,
-                  child: const Text('تخطي'),
-                ),
-              ),
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        actions: [
+          TextButton(
+            onPressed: _goToLogin,
+            child: const Text(
+              'Saltar',
+              style: TextStyle(color: Colors.black54, fontSize: 16),
             ),
-            Expanded(
-              child: PageView.builder(
-                controller: _pageController,
-                itemCount: _pages.length,
-                onPageChanged: (i) => setState(() => _index = i),
-                itemBuilder: (context, i) {
-                  final page = _pages[i];
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          width: 140,
-                          height: 140,
-                          decoration: const BoxDecoration(
-                            color: AppColors.lightGray,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            page.icon,
-                            size: 64,
-                            color: AppColors.accent,
-                          ),
+          )
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: PageView.builder(
+              controller: _pageController,
+              onPageChanged: (value) {
+                setState(() {
+                  _currentPage = value;
+                });
+              },
+              itemCount: _onboardingData.length,
+              itemBuilder: (context, index) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 40.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(40),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          shape: BoxShape.circle,
                         ),
-                        const SizedBox(height: 40),
-                        Text(
-                          page.title,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.black,
-                          ),
+                        child: Icon(
+                          _getIcon(index),
+                          size: 80,
+                          color: const Color(0xFFD4AF37), // Mismo tono dorado de tu imagen
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          page.description,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            color: AppColors.midGray,
-                            height: 1.6,
-                          ),
+                      ),
+                      const SizedBox(height: 50),
+                      Text(
+                        _onboardingData[index]["title"]!,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
                         ),
-                      ],
-                    ),
-                  );
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        _onboardingData[index]["description"]!,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey,
+                          height: 1.5,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          
+          // Puntos indicadores de página
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(
+              _onboardingData.length,
+              (index) => _buildDot(index: index),
+            ),
+          ),
+          const SizedBox(height: 40),
+          
+          // Botón Siguiente / Empezar
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 20.0),
+            child: SizedBox(
+              width: double.infinity,
+              height: 55,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFD4AF37), // Tono dorado de la app
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 0,
+                ),
+                onPressed: () {
+                  if (_currentPage == _onboardingData.length - 1) {
+                    _goToLogin();
+                  } else {
+                    _pageController.nextPage(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeIn,
+                    );
+                  }
                 },
-              ),
-            ),
-            Semantics(
-              label: 'صفحة ${_index + 1} من ${_pages.length}',
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(_pages.length, (i) {
-                  final active = i == _index;
-                  return AnimatedContainer(
-                    duration: const Duration(milliseconds: 250),
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    width: active ? 22 : 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: active ? AppColors.accent : AppColors.lightGray,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  );
-                }),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    if (isLast) {
-                      _goToAuth();
-                    } else {
-                      _pageController.nextPage(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeOut,
-                      );
-                    }
-                  },
-                  child: Text(isLast ? 'ابدأ' : 'التالي'),
+                child: Text(
+                  _currentPage == _onboardingData.length - 1 ? 'Empezar' : 'Siguiente',
+                  style: const TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Define los íconos para cada página
+  IconData _getIcon(int index) {
+    switch (index) {
+      case 0:
+        return Icons.shopping_bag_outlined;
+      case 1:
+        return Icons.people_alt_outlined;
+      case 2:
+        return Icons.sync_rounded;
+      default:
+        return Icons.info_outline;
+    }
+  }
+
+  // Constructor de los puntos
+  Widget _buildDot({required int index}) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      margin: const EdgeInsets.only(right: 8),
+      height: 8,
+      width: _currentPage == index ? 24 : 8,
+      decoration: BoxDecoration(
+        color: _currentPage == index ? const Color(0xFFD4AF37) : Colors.grey[300],
+        borderRadius: BorderRadius.circular(8),
       ),
     );
   }
