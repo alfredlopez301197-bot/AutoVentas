@@ -1,112 +1,69 @@
-import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:go_router/go_router.dart';
 
+import '../services/google_sheets_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/loading_indicator.dart';
-import '../widgets/search_picker.dart';
-import '../widgets/swipe_to_confirm_button.dart';
-
-// ============================================================================
-// ¡IMPORTANTE! PEGA AQUÍ TU ENLACE DE GOOGLE APPS SCRIPT
-// ============================================================================
-const String scriptUrl = 'https://script.google.com/macros/s/AKfycbz6Dhi_ysLgfc6O1renR2FiIoinWJ6QyuM3n_t3vzuPE7HK1mnnb1P4V3N4q8Z-L1-v/exec';
 
 class CustomerVisitsScreen extends StatefulWidget {
   const CustomerVisitsScreen({super.key});
 
   @override
-  State<CustomerVisitsScreen> createState() => _CustomerVisitsScreenState();
+  State<CustomerVisitsScreen> createState() =>
+      _CustomerVisitsScreenState();
 }
 
-class _CustomerVisitsScreenState extends State<CustomerVisitsScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
+class _CustomerVisitsScreenState
+    extends State<CustomerVisitsScreen> {
+  bool _checking = true;
+  bool _connected = false;
 
-  bool _loading = true;
-  String? _error;
-  List<Map<String, dynamic>> _clientes = [];
-
-  final List<Map<String, dynamic>> _visitasLocales = [];
+  final List<_VisitDraft> _drafts = [];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    _fetchData();
+    _checkConnection();
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
+  Future<void> _checkConnection() async {
+    setState(() => _checking = true);
 
-  Future<void> _fetchData() async {
+    final connected = await GoogleSheetsService.ping();
+
+    if (!mounted) return;
+
     setState(() {
-      _loading = true;
-      _error = null;
+      _connected = connected;
+      _checking = false;
     });
-
-    try {
-      if (scriptUrl == 'AQUI_TU_ENLACE_DE_APPS_SCRIPT') {
-        throw Exception('Falta colocar el enlace de Apps Script en el código');
-      }
-
-      final request = await HttpClient().getUrl(Uri.parse('$scriptUrl?action=sync'));
-      final response = await request.close();
-      final stringData = await response.transform(utf8.decoder).join();
-      final data = jsonDecode(stringData);
-
-      if (data['status'] == 'ok') {
-        final List<dynamic> clientesData = data['clientes'] ?? [];
-        if (mounted) {
-          setState(() {
-            _clientes = clientesData.map((e) => Map<String, dynamic>.from(e)).toList();
-            _loading = false;
-          });
-        }
-      } else {
-        throw Exception('El servidor no respondió correctamente');
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = 'Error de conexión: Verifica tu internet.\n$e';
-          _loading = false;
-        });
-      }
-    }
   }
 
-  Future<void> _logVisit({PickedRecord? presetCustomer}) async {
-    final result = await showModalBottomSheet<Object?>(
+  Future<void> _newVisit() async {
+    final draft = await showModalBottomSheet<_VisitDraft>(
       context: context,
       isScrollControlled: true,
       backgroundColor: AppColors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
-      ),
-      builder: (context) => _LogVisitSheet(
-        presetCustomer: presetCustomer,
-        clientes: _clientes,
-      ),
+      builder: (context) => const _VisitForm(),
     );
 
-    if (result is Map<String, dynamic>) {
-      setState(() {
-        _visitasLocales.insert(0, result);
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Visita registrada exitosamente')),
-      );
-    } else if (result is PickedRecord) {
-      if (!mounted) return;
-      context.push('/payment-entry', extra: result);
-    }
+    if (!mounted || draft == null) return;
+
+    setState(() => _drafts.insert(0, draft));
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Borrador creado. No se ha enviado a Google Sheets.',
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    String two(int value) => value.toString().padLeft(2, '0');
+
+    return '${two(date.day)}/${two(date.month)}/${date.year} '
+        '${two(date.hour)}:${two(date.minute)}';
   }
 
   @override
@@ -115,375 +72,273 @@ class _CustomerVisitsScreenState extends State<CustomerVisitsScreen>
       backgroundColor: AppColors.lightGray,
       appBar: AppBar(
         title: const Text('Ruta y Visitas'),
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: AppColors.black,
-          indicatorColor: AppColors.accent,
-          tabs: const [
-            Tab(text: 'Mis Visitas'),
-            Tab(text: 'Por Visitar'),
-          ],
-        ),
+        actions: [
+          IconButton(
+            tooltip: 'Actualizar conexión',
+            onPressed: _checking ? null : _checkConnection,
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _logVisit(),
+        onPressed: _newVisit,
         backgroundColor: AppColors.white,
         foregroundColor: AppColors.accent,
         icon: const Icon(Icons.add_location_alt_rounded),
-        label: const Text('Registrar Visita'),
+        label: const Text('Nueva visita'),
       ),
-      body: SafeArea(
-        child: TabBarView(
-          controller: _tabController,
-          children: [_buildVisitsTab(), _buildOverdueTab()],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildVisitsTab() {
-    if (_loading && _visitasLocales.isEmpty) return const LoadingIndicator();
-    if (_error != null && _visitasLocales.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(_error!, style: const TextStyle(color: AppColors.accent), textAlign: TextAlign.center),
-        ),
-      );
-    }
-    if (_visitasLocales.isEmpty) {
-      return const Center(
-        child: Text('No hay visitas registradas hoy', style: TextStyle(color: AppColors.midGray)),
-      );
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _visitasLocales.length,
-      itemBuilder: (context, i) {
-        final visit = _visitasLocales[i];
-        return Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.circular(AppRadius.card),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.storefront_rounded, color: AppColors.accent),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      body: RefreshIndicator(
+        onRefresh: _checkConnection,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
                   children: [
-                    Text(
-                      visit['nombre'] ?? 'Cliente',
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${visit['tipo']} - ${visit['hora']}',
-                      style: const TextStyle(color: AppColors.midGray, fontSize: 11.5),
-                    ),
-                    if (visit['notas'] != null && visit['notas'].isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        visit['notas'],
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12),
+                    if (_checking)
+                      const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
+                      )
+                    else
+                      Icon(
+                        _connected
+                            ? Icons.cloud_done_rounded
+                            : Icons.cloud_off_rounded,
+                        color: _connected
+                            ? Colors.green
+                            : Colors.orange,
                       ),
-                    ],
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _checking
+                            ? 'Comprobando conexión...'
+                            : _connected
+                                ? 'API disponible. Guardado pendiente.'
+                                : 'Sin conexión confirmada con la API.',
+                      ),
+                    ),
                   ],
                 ),
               ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildOverdueTab() {
-    if (_loading) return const LoadingIndicator();
-    if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(_error!, style: const TextStyle(color: AppColors.accent), textAlign: TextAlign.center),
+            ),
+            const SizedBox(height: 12),
+            const Card(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'Esta pantalla está en preparación. '
+                  'Puedes crear borradores de visitas para '
+                  'revisar el formulario, pero todavía no '
+                  'se guardan en Google Sheets. '
+                  'Los borradores se pierden al cerrar '
+                  'esta pantalla o reiniciar la aplicación.',
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Visitas en preparación',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (_drafts.isEmpty)
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(
+                    child: Text(
+                      'Todavía no has creado borradores.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              )
+            else
+              ..._drafts.map(
+                (visit) => Card(
+                  child: ListTile(
+                    leading: const Icon(
+                      Icons.storefront_rounded,
+                      color: AppColors.accent,
+                    ),
+                    title: Text(visit.customerName),
+                    subtitle: Text(
+                      '${visit.type} · '
+                      '${_formatDate(visit.createdAt)}'
+                      '${visit.notes.isEmpty ? '' : '\n${visit.notes}'}',
+                    ),
+                    isThreeLine: visit.notes.isNotEmpty,
+                    trailing: const Icon(
+                      Icons.edit_note_rounded,
+                      color: Colors.orange,
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
-      );
-    }
-    if (_clientes.isEmpty) {
-      return const Center(
-        child: Text('No hay clientes asignados a tu ruta', style: TextStyle(color: AppColors.midGray)),
-      );
-    }
-    return RefreshIndicator(
-      color: AppColors.accent,
-      onRefresh: _fetchData,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _clientes.length,
-        itemBuilder: (context, i) {
-          final customer = _clientes[i];
-          final nombre = customer['Nombre_Tienda']?.toString() ?? 'Sin Nombre';
-          final ruta = customer['Ruta']?.toString() ?? '';
-          
-          return Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              borderRadius: BorderRadius.circular(AppRadius.card),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        nombre,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        ruta.isNotEmpty ? ruta : 'Sin ruta asignada',
-                        style: const TextStyle(color: AppColors.accent, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                FilledButton.icon(
-                  onPressed: () => _logVisit(
-                    presetCustomer: PickedRecord(name: customer['ID_Cliente']?.toString() ?? '', label: nombre),
-                  ),
-                  icon: const Icon(Icons.add_location_alt_rounded, size: 16),
-                  label: const Text('Visitar'),
-                ),
-              ],
-            ),
-          );
-        },
       ),
     );
   }
 }
 
-class _LogVisitSheet extends StatefulWidget {
-  const _LogVisitSheet({this.presetCustomer, required this.clientes});
+class _VisitDraft {
+  const _VisitDraft({
+    required this.customerName,
+    required this.type,
+    required this.notes,
+    required this.createdAt,
+  });
 
-  final PickedRecord? presetCustomer;
-  final List<Map<String, dynamic>> clientes;
-
-  @override
-  State<_LogVisitSheet> createState() => _LogVisitSheetState();
+  final String customerName;
+  final String type;
+  final String notes;
+  final DateTime createdAt;
 }
 
-class _LogVisitSheetState extends State<_LogVisitSheet> {
-  PickedRecord? _customer;
-  String _visitType = 'Visita';
-  final _notesController = TextEditingController();
-  bool _submitting = false;
-  String? _error;
-
-  final List<String> _visitTypes = ['Visita', 'Cobro', 'Preventa', 'Entrega'];
+class _VisitForm extends StatefulWidget {
+  const _VisitForm();
 
   @override
-  void initState() {
-    super.initState();
-    _customer = widget.presetCustomer;
-  }
+  State<_VisitForm> createState() => _VisitFormState();
+}
+
+class _VisitFormState extends State<_VisitForm> {
+  final _formKey = GlobalKey<FormState>();
+
+  final _customerController = TextEditingController();
+  final _notesController = TextEditingController();
+
+  String _visitType = 'Visita';
+
+  static const _visitTypes = [
+    'Visita',
+    'Cobro',
+    'Preventa',
+    'Entrega',
+    'No encontrado',
+    'Otro',
+  ];
 
   @override
   void dispose() {
+    _customerController.dispose();
     _notesController.dispose();
     super.dispose();
   }
 
-  Future<void> _pickCustomer() async {
-    final result = await showSearchPicker(
-      context: context,
-      title: 'Seleccionar Cliente',
-      hintText: 'Buscar por nombre o dueño...',
-      search: (query) async {
-        final q = query.toLowerCase();
-        return widget.clientes.where((c) {
-          final nombre = (c['Nombre_Tienda'] ?? '').toString().toLowerCase();
-          final prop = (c['Propietario'] ?? '').toString().toLowerCase();
-          return q.isEmpty || nombre.contains(q) || prop.contains(q);
-        }).map((c) => PickedRecord(
-          name: c['ID_Cliente']?.toString() ?? '',
-          label: c['Nombre_Tienda']?.toString() ?? 'Sin Nombre',
-          subtitle: c['Ruta']?.toString() ?? '',
-        )).toList();
-      },
+  void _createDraft() {
+    if (!_formKey.currentState!.validate()) return;
+
+    Navigator.of(context).pop(
+      _VisitDraft(
+        customerName: _customerController.text.trim(),
+        type: _visitType,
+        notes: _notesController.text.trim(),
+        createdAt: DateTime.now(),
+      ),
     );
-    if (result != null) setState(() => _customer = result);
-  }
-
-  void _goToCollection() {
-    final customer = _customer;
-    if (customer == null) return;
-    Navigator.of(context).pop(customer);
-  }
-
-  Future<bool> _submit() async {
-    if (_customer == null) return false;
-    
-    setState(() {
-      _submitting = true;
-      _error = null;
-    });
-
-    try {
-      bool gpsActivado = await Geolocator.isLocationServiceEnabled();
-      if (!gpsActivado) {
-        setState(() => _error = 'Debes encender el GPS para registrar la visita.');
-        return false;
-      }
-
-      // Enviar la visita al Excel
-      final request = await HttpClient().postUrl(Uri.parse(scriptUrl));
-      request.headers.contentType = ContentType.json;
-      request.write(jsonEncode({
-        'action': 'registrar_visita',
-        'idCliente': _customer!.name,
-        'nombreCliente': _customer!.label,
-        'tipoVisita': _visitType,
-        'notas': _notesController.text.trim(),
-      }));
-      
-      final response = await request.close();
-      final stringData = await response.transform(utf8.decoder).join();
-      final data = jsonDecode(stringData);
-
-      if (data['status'] != 'ok') {
-        throw Exception('El servidor rechazó la visita');
-      }
-      
-      final ahora = DateTime.now();
-      final hora = '${ahora.hour.toString().padLeft(2, '0')}:${ahora.minute.toString().padLeft(2, '0')}';
-
-      if (!mounted) return true;
-      Navigator.of(context).pop({
-        'id': _customer!.name,
-        'nombre': _customer!.label,
-        'tipo': _visitType,
-        'notas': _notesController.text.trim(),
-        'hora': hora,
-      });
-      return true;
-    } catch (e) {
-      setState(() => _error = 'Error al registrar visita: $e');
-      return false;
-    } finally {
-      if (mounted) setState(() => _submitting = false);
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.only(
-        left: 20, right: 20, top: 20,
+        left: 20,
+        right: 20,
+        top: 20,
         bottom: MediaQuery.of(context).viewInsets.bottom + 20,
       ),
       child: SafeArea(
         top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Registrar Visita',
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-            ),
-            const SizedBox(height: 16),
-            Material(
-              color: AppColors.lightGray,
-              borderRadius: BorderRadius.circular(AppRadius.field),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(AppRadius.field),
-                onTap: widget.presetCustomer != null ? null : _pickCustomer,
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.storefront_rounded, color: AppColors.accent),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          _customer?.label ?? 'Seleccionar Cliente',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: _customer == null ? AppColors.midGray : AppColors.black,
-                          ),
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Nueva visita',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Borrador local: todavía no se enviará '
+                  'a Google Sheets.',
+                ),
+                const SizedBox(height: 20),
+                TextFormField(
+                  controller: _customerController,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre del cliente',
+                    prefixIcon: Icon(Icons.storefront_rounded),
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Escribe el nombre del cliente';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: _visitType,
+                  decoration: const InputDecoration(
+                    labelText: 'Tipo de visita',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _visitTypes
+                      .map(
+                        (type) => DropdownMenuItem(
+                          value: type,
+                          child: Text(type),
                         ),
-                      ),
-                      if (widget.presetCustomer == null)
-                        const Icon(Icons.chevron_right_rounded, color: AppColors.midGray),
-                    ],
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() => _visitType = value);
+                    }
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _notesController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Notas y observaciones',
+                    hintText: '¿Qué ocurrió durante la visita?',
+                    border: OutlineInputBorder(),
                   ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text('Motivo de la Visita', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              children: _visitTypes.map((type) {
-                final selected = _visitType == type;
-                return ChoiceChip(
-                  label: Text(type),
-                  selected: selected,
-                  selectedColor: AppColors.accent,
-                  labelStyle: TextStyle(
-                    color: selected ? AppColors.white : AppColors.black,
-                    fontWeight: FontWeight.w700,
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _createDraft,
+                    icon: const Icon(Icons.note_add_rounded),
+                    label: const Text('Crear borrador'),
                   ),
-                  onSelected: (_) => setState(() {
-                    _visitType = type;
-                  }),
-                );
-              }).toList(),
-            ),
-            if (_visitType == 'Cobro') ...[
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: _customer == null ? null : _goToCollection,
-                icon: const Icon(Icons.payments_rounded, size: 18),
-                label: const Text('Ir a registrar un cobro monetario'),
-              ),
-            ],
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _notesController,
-              maxLines: 3,
-              decoration: const InputDecoration(hintText: 'Notas y observaciones (opcional)...'),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 8),
-              Text(_error!, style: const TextStyle(color: AppColors.accent, fontSize: 12.5)),
-            ],
-            const SizedBox(height: 16),
-            Opacity(
-              opacity: (_customer == null || _submitting) ? 0.4 : 1,
-              child: IgnorePointer(
-                ignoring: _customer == null || _submitting,
-                child: SwipeToConfirmButton(
-                  label: 'Desliza para registrar visita',
-                  confirmedLabel: '¡Guardado!',
-                  onConfirmed: _submit,
-                  wasQueued: () => false,
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
