@@ -58,7 +58,7 @@ Future<void> openDocumentFromNotification(String doctype, String name) async {
 }
 
 final _router = GoRouter(
-  initialLocation: '/',
+  initialLocation: '/home',
   routes: [
     GoRoute(path: '/', builder: (context, state) => const SplashScreen()),
     GoRoute(
