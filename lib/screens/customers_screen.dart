@@ -1,46 +1,18 @@
-import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../services/cache_service.dart';
-import '../services/erp_service.dart';
 import '../theme/app_theme.dart';
-import '../utils/erp_error_handling.dart';
 import '../widgets/loading_indicator.dart';
-import '../widgets/row_sync_icon.dart';
-import 'document_detail_screen.dart';
 
-class _CustomerRow {
-  const _CustomerRow({
-    required this.name,
-    required this.label,
-    this.territory,
-    this.disabled = false,
-  });
+// ============================================================================
+// ¡IMPORTANTE! PEGA AQUÍ TU ENLACE DE GOOGLE APPS SCRIPT
+// (El mismo que usaste en auth_screen.dart, asegúrate de mantener las comillas)
+// ============================================================================
+const String scriptUrl = 'AQUI_TU_ENLACE_DE_APPS_SCRIPT';
 
-  final String name;
-  final String label;
-  final String? territory;
-  final bool disabled;
-}
-
-/// Customer list/search — `GET /api/resource/Customer` (standard REST,
-/// confirmed usage pattern from the sales screens). Credit limit is NOT
-/// shown in this list — it lives in the `credit_limits` child table (not a
-/// flat `credit_limit` field, see docs/API_INTEGRATION_NOTES.md "جولة
-/// ثامنة"), which would need a per-row fetch this list doesn't do. Full
-/// account statement is available per-customer via the bottom sheet below.
-///
-/// Territory filter (gear icon): the server-side Permission Query Script
-/// is NOT the load-bearing restriction here (confirmed unreliable live on
-/// this site — see the other Customer pickers' doc comments), so this
-/// screen applies the same default client-side filter they do: every
-/// territory from [ErpService.getUserTerritories] unless the user narrows
-/// it further via the gear icon. An empty manual selection means "back to
-/// all my territories", never "no filter at all" — see [_effectiveTerritories].
-/// The gear icon itself stays hidden for anyone with zero or one territory,
-/// since there's nothing meaningful to narrow.
 class CustomersScreen extends StatefulWidget {
   const CustomersScreen({super.key});
 
@@ -50,140 +22,105 @@ class CustomersScreen extends StatefulWidget {
 
 class _CustomersScreenState extends State<CustomersScreen> {
   final _controller = TextEditingController();
-  Timer? _debounce;
-  List<_CustomerRow> _results = [];
+  List<Map<String, dynamic>> _allCustomers = [];
+  List<Map<String, dynamic>> _filteredCustomers = [];
   bool _loading = true;
   String? _error;
 
-  List<String> _availableTerritories = const [];
+  List<String> _availableTerritories = [];
   Set<String> _selectedTerritories = {};
-  bool _fromCache = false;
 
   @override
   void initState() {
     super.initState();
-    _init();
-  }
-
-  Future<void> _init() async {
-    try {
-      _availableTerritories = await ErpService.getExpandedUserTerritories();
-    } catch (e) {
-      // Genuinely unresolved (no cache yet AND no connection right now) —
-      // must NOT fall through to `_search('')` with an empty territory
-      // list, since an empty list there reads as "no filter" and would
-      // show every customer in the system, not just this rep's own
-      // territory (a confirmed real bug on a weak connection before this
-      // was fixed at the `ErpService` layer).
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = 'تعذر تحديد مناطقك — تحقق من الاتصال بالإنترنت وحاول مرة أخرى';
-      });
-      return;
-    }
-    if (mounted) {
-      setState(() {});
-      _search('');
-    }
+    _fetchCustomers();
   }
 
   @override
   void dispose() {
-    _debounce?.cancel();
     _controller.dispose();
     super.dispose();
   }
 
-  void _onChanged(String query) {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 350), () => _search(query));
-  }
-
-  /// المناطق المستخدمة فعليًا في الاستعلام: اختيار المستخدم اليدوي لو موجود،
-  /// وإلا كل مناطقه — مفيش حالة "بلا فلتر خالص" أبدًا طالما عنده منطقة واحدة
-  /// على الأقل (نفس فلسفة بيكرات العميل التانية في التطبيق).
-  List<String> get _effectiveTerritories => _selectedTerritories.isNotEmpty
-      ? _selectedTerritories.toList()
-      : _availableTerritories;
-
-  void _applyRows(List<Map<String, dynamic>> rows, bool fromCache) {
-    if (!mounted) return;
-    setState(() {
-      _results = rows
-          .map(
-            (c) => _CustomerRow(
-              name: c['name'] as String,
-              label: (c['customer_name'] as String?) ?? c['name'] as String,
-              territory: c['territory'] as String?,
-              disabled:
-                  ((c['disabled'] as num?) ?? 0) == 1 ||
-                  ((c['is_frozen'] as num?) ?? 0) == 1,
-            ),
-          )
-          .toList();
-      _fromCache = fromCache;
-      _loading = false;
-      _error = null;
-    });
-  }
-
-  Future<void> _search(String query) async {
+  Future<void> _fetchCustomers() async {
     setState(() {
       _loading = true;
       _error = null;
     });
+
     try {
-      final effectiveTerritories = _effectiveTerritories;
-      final result = await CacheService.getListStaleWhileRevalidate(
-        cacheDoctype: 'Customer_list',
-        cacheKey: '${effectiveTerritories.join(',')}|$query',
-        // Paints instantly from the last cached copy — a weak connection
-        // used to mean staring at a spinner for however long the live
-        // call took to time out before anything showed up at all.
-        onCacheHit: (cached) => _applyRows(cached.rows, true),
-        fetch: () => ErpService.getList(
-          'Customer',
-          filters: [
-            if (effectiveTerritories.isNotEmpty)
-              ['territory', 'in', effectiveTerritories],
-            if (query.isNotEmpty) ['customer_name', 'like', '%$query%'],
-          ],
-          fields: const [
-            'name',
-            'customer_name',
-            'territory',
-            'disabled',
-            'is_frozen',
-          ],
-          limit: 50,
-        ),
-      );
-      _applyRows(result.rows, result.fromCache);
-    } catch (e) {
-      if (!mounted) return;
-      // A cache hit already painted the screen above — a failed live
-      // refresh on top of that just means "still showing the cached
-      // copy", not a blocking error.
-      if (_results.isNotEmpty) {
-        setState(() => _loading = false);
-        return;
+      if (scriptUrl == 'AQUI_TU_ENLACE_DE_APPS_SCRIPT') {
+        throw Exception('Falta colocar el enlace de Apps Script en el código');
       }
-      final message = handleErpError(context, e);
-      if (message == null) return;
-      setState(() {
-        _error = message;
-        _loading = false;
-      });
+
+      final request = await HttpClient().getUrl(Uri.parse('$scriptUrl?action=sync'));
+      final response = await request.close();
+      final stringData = await response.transform(utf8.decoder).join();
+      final data = jsonDecode(stringData);
+
+      if (data['status'] == 'ok') {
+        final List<dynamic> clientesData = data['clientes'] ?? [];
+        
+        // Extraer lista de clientes y rutas únicas
+        final Set<String> rutas = {};
+        final List<Map<String, dynamic>> clientesParseados = [];
+        
+        for (var c in clientesData) {
+          final cliente = Map<String, dynamic>.from(c);
+          clientesParseados.add(cliente);
+          
+          final ruta = cliente['Ruta']?.toString();
+          if (ruta != null && ruta.isNotEmpty) {
+            rutas.add(ruta);
+          }
+        }
+
+        if (mounted) {
+          setState(() {
+            _allCustomers = clientesParseados;
+            _availableTerritories = rutas.toList()..sort();
+            _loading = false;
+          });
+          _search(_controller.text);
+        }
+      } else {
+        throw Exception('El servidor no devolvió status: ok');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Error de conexión: Verifica tu internet o el enlace del script.\n$e';
+          _loading = false;
+        });
+      }
     }
   }
 
+  void _search(String query) {
+    final q = query.toLowerCase();
+    setState(() {
+      _filteredCustomers = _allCustomers.where((c) {
+        final nombre = (c['Nombre_Tienda'] ?? '').toString().toLowerCase();
+        final propietario = (c['Propietario'] ?? '').toString().toLowerCase();
+        final ruta = (c['Ruta'] ?? '').toString();
+
+        // Filtro de texto
+        final matchesText = q.isEmpty || nombre.contains(q) || propietario.contains(q);
+        
+        // Filtro de ruta
+        final matchesRuta = _selectedTerritories.isEmpty || _selectedTerritories.contains(ruta);
+
+        return matchesText && matchesRuta;
+      }).toList();
+    });
+  }
+
   Future<void> _openTerritoryFilter() async {
-    if (_availableTerritories.length <= 1) return;
+    if (_availableTerritories.isEmpty) return;
     final result = await showModalBottomSheet<Set<String>>(
       context: context,
       backgroundColor: AppColors.white,
-      shape: RoundedRectangleBorder(
+      shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(AppRadius.card),
         ),
@@ -200,7 +137,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'فلترة حسب المنطقة',
+                      'Filtrar por Ruta',
                       style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 15,
@@ -229,17 +166,15 @@ class _CustomersScreenState extends State<CustomersScreen> {
                       children: [
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: () =>
-                                setSheetState(() => localSelection.clear()),
-                            child: const Text('مسح الفلتر'),
+                            onPressed: () => setSheetState(() => localSelection.clear()),
+                            child: const Text('Limpiar'),
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: FilledButton(
-                            onPressed: () =>
-                                Navigator.of(context).pop(localSelection),
-                            child: const Text('تطبيق'),
+                            onPressed: () => Navigator.of(context).pop(localSelection),
+                            child: const Text('Aplicar'),
                           ),
                         ),
                       ],
@@ -260,23 +195,20 @@ class _CustomersScreenState extends State<CustomersScreen> {
     }
   }
 
-  /// نفس حساب "المديونية الحالية" الموجود في [CustomerStatementScreen] —
-  /// مجموع GL Entry (مدين - دائن) — بس بدون تفاصيل الحركات، رقم سريع بس
-  /// يظهر في شيت العميل هنا.
-  Future<Map<String, dynamic>?> _fetchCustomerCredit(String customer) {
-    return ErpService.getCustomerCreditStatus(customer);
-  }
-
-  void _openCustomerActions(_CustomerRow customer) {
+  void _openCustomerActions(Map<String, dynamic> customer) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppColors.white,
-      shape: RoundedRectangleBorder(
+      shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(AppRadius.card),
         ),
       ),
       builder: (sheetContext) {
+        final limit = double.tryParse(customer['Limite_Credito']?.toString() ?? '0') ?? 0.0;
+        final outstanding = double.tryParse(customer['Deuda_Actual']?.toString() ?? '0') ?? 0.0;
+        final available = limit - outstanding;
+
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
@@ -285,70 +217,42 @@ class _CustomersScreenState extends State<CustomersScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  customer.label,
+                  customer['Nombre_Tienda']?.toString() ?? 'Cliente',
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 8),
-                FutureBuilder<Map<String, dynamic>?>(
-                  future: _fetchCustomerCredit(customer.name),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 4),
-                        child: SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.lightGray,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Límite de crédito: \$${limit.toStringAsFixed(2)}'),
+                      Text('Deuda actual: \$${outstanding.toStringAsFixed(2)}'),
+                      Text(
+                        available >= 0
+                            ? 'Crédito disponible: \$${available.toStringAsFixed(2)}'
+                            : 'Cupo excedido: \$${(-available).toStringAsFixed(2)}',
+                        style: TextStyle(
+                          color: available >= 0 ? AppColors.success : AppColors.accent,
+                          fontWeight: FontWeight.w800,
                         ),
-                      );
-                    }
-                    final credit = snapshot.data;
-                    if (credit == null) return const SizedBox.shrink();
-                    final limit = (credit['credit_limit'] as num?) ?? 0;
-                    final outstanding = (credit['outstanding'] as num?) ?? 0;
-                    final available =
-                        (credit['available'] as num?) ?? (limit - outstanding);
-                    return Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppColors.lightGray,
-                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('سقف الدين: ${limit.toStringAsFixed(2)} ج.م'),
-                          Text(
-                            'المديونية: ${outstanding.toStringAsFixed(2)} ج.م',
-                          ),
-                          Text(
-                            available >= 0
-                                ? 'المتاح: ${available.toStringAsFixed(2)} ج.م'
-                                : 'تجاوز السقف: ${(-available).toStringAsFixed(2)} ج.م',
-                            style: TextStyle(
-                              color: available >= 0
-                                  ? AppColors.success
-                                  : AppColors.accent,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 16),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(
-                    Icons.storefront_rounded,
-                    color: AppColors.accent,
-                  ),
-                  title: const Text('زيارة عميل'),
+                  leading: const Icon(Icons.storefront_rounded, color: AppColors.accent),
+                  title: const Text('Visitar Cliente'),
                   onTap: () {
                     Navigator.of(sheetContext).pop();
                     context.push('/customer-visits');
@@ -356,30 +260,22 @@ class _CustomersScreenState extends State<CustomersScreen> {
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(
-                    Icons.receipt_long_outlined,
-                    color: AppColors.accent,
-                  ),
-                  title: const Text('كشف حساب'),
+                  leading: const Icon(Icons.receipt_long_outlined, color: AppColors.accent),
+                  title: const Text('Estado de Cuenta / Cobros'),
                   onTap: () {
                     Navigator.of(sheetContext).pop();
-                    context.push(
-                      '/customer-statement/${Uri.encodeComponent(customer.name)}'
-                      '?label=${Uri.encodeComponent(customer.label)}',
-                    );
+                    // Redirigirá a la pantalla de estado de cuenta
+                    context.push('/customer-statement/${customer['ID_Cliente']}');
                   },
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(
-                    Icons.badge_outlined,
-                    color: AppColors.accent,
-                  ),
-                  title: const Text('تفاصيل / تعديل العميل'),
+                  leading: const Icon(Icons.badge_outlined, color: AppColors.accent),
+                  title: const Text('Editar Información'),
                   onTap: () {
                     Navigator.of(sheetContext).pop();
-                    context.push(
-                      documentDetailRoute('Customer', customer.name),
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Edición de clientes en construcción')),
                     );
                   },
                 ),
@@ -396,15 +292,13 @@ class _CustomersScreenState extends State<CustomersScreen> {
     return Scaffold(
       backgroundColor: AppColors.lightGray,
       appBar: AppBar(
-        title: const Text('إدارة العملاء'),
+        title: const Text('Directorio de Clientes'),
         actions: [
           if (_availableTerritories.length > 1)
             IconButton(
               icon: Icon(
                 Icons.tune_rounded,
-                color: _selectedTerritories.isNotEmpty
-                    ? AppColors.accent
-                    : null,
+                color: _selectedTerritories.isNotEmpty ? AppColors.accent : null,
               ),
               onPressed: _openTerritoryFilter,
             ),
@@ -417,9 +311,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               child: TextField(
                 controller: _controller,
-                onChanged: _onChanged,
+                onChanged: _search,
                 decoration: const InputDecoration(
-                  hintText: 'ابحث باسم العميل...',
+                  hintText: 'Buscar tienda o propietario...',
                   prefixIcon: Icon(Icons.search_rounded),
                 ),
               ),
@@ -427,7 +321,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
             Expanded(
               child: RefreshIndicator(
                 color: AppColors.accent,
-                onRefresh: () => _search(_controller.text),
+                onRefresh: _fetchCustomers,
                 child: _buildBody(),
               ),
             ),
@@ -437,11 +331,6 @@ class _CustomersScreenState extends State<CustomersScreen> {
     );
   }
 
-  // A `RefreshIndicator`'s pull gesture needs a scrollable descendant to
-  // attach to — every branch below is wrapped in one (with
-  // `AlwaysScrollableScrollPhysics`, since a short/empty list otherwise
-  // isn't scrollable at all) so pull-to-refresh works no matter what's on
-  // screen: loading, an error, an empty result, or the real list.
   Widget _buildBody() {
     if (_loading) {
       return ListView(
@@ -470,7 +359,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       );
     }
 
-    if (_results.isEmpty) {
+    if (_filteredCustomers.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: const [
@@ -478,7 +367,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
             padding: EdgeInsets.only(top: 80),
             child: Center(
               child: Text(
-                'لا يوجد عملاء',
+                'No hay clientes registrados',
                 style: TextStyle(color: AppColors.midGray),
               ),
             ),
@@ -490,94 +379,84 @@ class _CustomersScreenState extends State<CustomersScreen> {
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      itemCount: _results.length,
+      itemCount: _filteredCustomers.length,
       separatorBuilder: (context, i) => const SizedBox(height: 8),
       itemBuilder: (context, i) {
-        final customer = _results[i];
-        final isDisabled = customer.disabled;
+        final customer = _filteredCustomers[i];
+        final nombreTienda = customer['Nombre_Tienda']?.toString() ?? 'Sin Nombre';
+        final propietario = customer['Propietario']?.toString() ?? '';
+        final ruta = customer['Ruta']?.toString() ?? 'Sin Ruta';
 
         return Material(
           color: AppColors.white,
           borderRadius: BorderRadius.circular(AppRadius.card),
           child: InkWell(
             borderRadius: BorderRadius.circular(AppRadius.card),
-            onTap: isDisabled ? null : () => _openCustomerActions(customer),
-            child: Opacity(
-              opacity: isDisabled ? 0.5 : 1.0,
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: AppColors.lightGray,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        isDisabled
-                            ? Icons.block_rounded
-                            : Icons.storefront_rounded,
-                        color: isDisabled ? AppColors.midGray : AppColors.black,
-                        size: 18,
-                      ),
+            onTap: () => _openCustomerActions(customer),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppColors.lightGray,
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+                    child: const Icon(
+                      Icons.storefront_rounded,
+                      color: AppColors.black,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          nombreTienda,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13.5,
+                            color: AppColors.black,
+                          ),
+                        ),
+                        if (propietario.isNotEmpty) ...[
+                          const SizedBox(height: 2),
                           Text(
-                            customer.label,
+                            propietario,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13.5,
-                              color: isDisabled
-                                  ? AppColors.midGray
-                                  : AppColors.black,
+                            style: const TextStyle(
+                              color: AppColors.midGray,
+                              fontSize: 11.5,
                             ),
                           ),
-                          if (isDisabled) ...[
-                            const SizedBox(height: 2),
-                            const Text(
-                              'العميل معطل / مجمد',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: AppColors.accent,
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ] else if (customer.territory != null) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              customer.territory!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: AppColors.midGray,
-                                fontSize: 11.5,
-                              ),
-                            ),
-                          ],
                         ],
-                      ),
+                        const SizedBox(height: 2),
+                        Text(
+                          ruta,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.accent,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
-                    if (!isDisabled) ...[
-                      RowSyncIcon(fromCache: _fromCache),
-                      const SizedBox(width: 6),
-                      const Icon(
-                        Icons.chevron_left_rounded,
-                        color: AppColors.midGray,
-                        size: 20,
-                      ),
-                    ],
-                  ],
-                ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded, // Se cambió de left a right (flecha correcta)
+                    color: AppColors.midGray,
+                    size: 20,
+                  ),
+                ],
               ),
             ),
           ),
