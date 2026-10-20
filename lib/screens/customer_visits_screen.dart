@@ -30,7 +30,6 @@ class _CustomerVisitsScreenState extends State<CustomerVisitsScreen>
   String? _error;
   List<Map<String, dynamic>> _clientes = [];
 
-  // Simulador de visitas locales (hasta que agreguemos la pestaña al Excel)
   final List<Map<String, dynamic>> _visitasLocales = [];
 
   @override
@@ -98,7 +97,6 @@ class _CustomerVisitsScreenState extends State<CustomerVisitsScreen>
     );
 
     if (result is Map<String, dynamic>) {
-      // Guardar la visita en la lista temporal de la pantalla
       setState(() {
         _visitasLocales.insert(0, result);
       });
@@ -107,7 +105,6 @@ class _CustomerVisitsScreenState extends State<CustomerVisitsScreen>
       );
     } else if (result is PickedRecord) {
       if (!mounted) return;
-      // Ir a pantalla de cobros
       context.push('/payment-entry', extra: result);
     }
   }
@@ -349,8 +346,24 @@ class _LogVisitSheetState extends State<_LogVisitSheet> {
         return false;
       }
 
-      // Simulamos la demora de guardar en la base de datos
-      await Future.delayed(const Duration(seconds: 1));
+      // Enviar la visita al Excel
+      final request = await HttpClient().postUrl(Uri.parse(scriptUrl));
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode({
+        'action': 'registrar_visita',
+        'idCliente': _customer!.name,
+        'nombreCliente': _customer!.label,
+        'tipoVisita': _visitType,
+        'notas': _notesController.text.trim(),
+      }));
+      
+      final response = await request.close();
+      final stringData = await response.transform(utf8.decoder).join();
+      final data = jsonDecode(stringData);
+
+      if (data['status'] != 'ok') {
+        throw Exception('El servidor rechazó la visita');
+      }
       
       final ahora = DateTime.now();
       final hora = '${ahora.hour.toString().padLeft(2, '0')}:${ahora.minute.toString().padLeft(2, '0')}';
