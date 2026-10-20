@@ -11,7 +11,7 @@ import '../widgets/loading_indicator.dart';
 // ¡IMPORTANTE! PEGA AQUÍ TU ENLACE DE GOOGLE APPS SCRIPT
 // (El mismo que usaste en auth_screen.dart, asegúrate de mantener las comillas)
 // ============================================================================
-const String scriptUrl = 'AQUI_TU_ENLACE_DE_APPS_SCRIPT';
+const String scriptUrl = 'https://script.google.com/macros/s/AKfycbz6Dhi_ysLgfc6O1renR2FiIoinWJ6QyuM3n_t3vzuPE7HK1mnnb1P4V3N4q8Z-L1-v/exec';
 
 class CustomersScreen extends StatefulWidget {
   const CustomersScreen({super.key});
