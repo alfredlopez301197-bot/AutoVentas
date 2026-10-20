@@ -16,7 +16,7 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isLoading = false;
 
   // PEGA AQUÍ TU LINK EXACTO DE APPS SCRIPT (MANTÉN LAS COMILLAS SIMPLES)
-  final String scriptUrl = 'https://script.google.com/macros/s/AKfycbwCJoLUxBHrlJd7Rz4VTyiptxNmVJSUP77oYjR3om2rUHwovWxsuiulQfeefcTp4ZZZ/exec';
+  final String scriptUrl = 'https://script.google.com/macros/s/AKfycbz6Dhi_ysLgfc6O1renR2FiIoinWJ6QyuM3n_t3vzuPE7HK1mnnb1P4V3N4q8Z-L1-v/exec';
 
   Future<void> _login() async {
     setState(() => _isLoading = true);
