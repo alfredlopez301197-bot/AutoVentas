@@ -1,7 +1,9 @@
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../services/google_sheets_service.dart';
+import 'sales_order_screen.dart';
 
 /// Pantalla principal de AutoVentas.
 /// Los módulos pendientes no escriben en ERPNext ni en Google Sheets.
@@ -38,9 +40,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _checkConnection() async {
-    setState(() => _checking = true);
+    if (mounted) {
+      setState(() => _checking = true);
+    }
+
     final ok = await GoogleSheetsService.ping();
+
     if (!mounted) return;
+
     setState(() {
       _connected = ok;
       _checking = false;
@@ -50,15 +57,33 @@ class _HomeScreenState extends State<HomeScreen> {
   void _showPending(String module) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('$module: pendiente de conectar con Google Sheets.'),
+        content: Text(
+          '$module: pendiente de conectar con Google Sheets.',
+        ),
         duration: const Duration(seconds: 3),
       ),
     );
   }
 
+  void _openModule(_HomeModule module) {
+    if (module.title == 'Pedidos') {
+      // Navegación directa a la pantalla de borradores.
+      // No requiere autenticación ni escribe datos reales.
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (context) => const SalesOrderScreen(),
+        ),
+      );
+      return;
+    }
+
+    _showPending(module.title);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('AutoVentas'),
@@ -86,9 +111,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Bienvenido a AutoVentas', style: theme.textTheme.titleLarge),
+                    Text(
+                      'Bienvenido a AutoVentas',
+                      style: theme.textTheme.titleLarge,
+                    ),
                     const SizedBox(height: 8),
-                    const Text('Ventas, clientes, rutas e inventario en un solo lugar.'),
+                    const Text(
+                      'Ventas, clientes, rutas e inventario en un solo lugar.',
+                    ),
                     const SizedBox(height: 14),
                     Row(
                       children: [
@@ -96,12 +126,18 @@ class _HomeScreenState extends State<HomeScreen> {
                           const SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                            ),
                           )
                         else
                           Icon(
-                            _connected ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
-                            color: _connected ? Colors.green : Colors.orange,
+                            _connected
+                                ? Icons.cloud_done_rounded
+                                : Icons.cloud_off_rounded,
+                            color: _connected
+                                ? Colors.green
+                                : Colors.orange,
                           ),
                         const SizedBox(width: 10),
                         Expanded(
@@ -120,18 +156,28 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(height: 20),
-            Text('Módulos de AutoVentas', style: theme.textTheme.titleLarge),
+            Text(
+              'Módulos de AutoVentas',
+              style: theme.textTheme.titleLarge,
+            ),
             const SizedBox(height: 6),
-            const Text('Estamos migrando cada módulo. Los pendientes aún no registran datos.'),
+            const Text(
+              'Estamos migrando cada módulo. '
+              'Los pendientes aún no registran datos.',
+            ),
             const SizedBox(height: 14),
             LayoutBuilder(
               builder: (context, constraints) {
-                final columns = constraints.maxWidth >= 600 ? 4 : 2;
+                final columns =
+                    constraints.maxWidth >= 600 ? 4 : 2;
+
                 return GridView.builder(
                   shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
+                  physics:
+                      const NeverScrollableScrollPhysics(),
                   itemCount: _modules.length,
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  gridDelegate:
+                      SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: columns,
                     mainAxisSpacing: 12,
                     crossAxisSpacing: 12,
@@ -139,31 +185,43 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   itemBuilder: (context, index) {
                     final module = _modules[index];
+
                     return Card(
                       clipBehavior: Clip.antiAlias,
                       child: InkWell(
-                        onTap: () => _showPending(module.title),
+                        onTap: () => _openModule(module),
                         child: Padding(
                           padding: const EdgeInsets.all(10),
                           child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisAlignment:
+                                MainAxisAlignment.center,
                             children: [
-                              Icon(module.icon, size: 30, color: theme.colorScheme.primary),
+                              Icon(
+                                module.icon,
+                                size: 30,
+                                color:
+                                    theme.colorScheme.primary,
+                              ),
                               const SizedBox(height: 8),
                               Text(
                                 module.title,
                                 textAlign: TextAlign.center,
                                 maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontWeight: FontWeight.bold),
+                                overflow:
+                                    TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 module.subtitle,
                                 textAlign: TextAlign.center,
                                 maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall,
+                                overflow:
+                                    TextOverflow.ellipsis,
+                                style:
+                                    theme.textTheme.bodySmall,
                               ),
                             ],
                           ),
@@ -179,8 +237,12 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Padding(
                 padding: EdgeInsets.all(16),
                 child: Text(
-                  'Próxima etapa: conectar la lectura de productos y clientes. '
-                  'El indicador de conexión no significa que las ventas o los cobros ya estén habilitados.',
+                  'Pedidos está habilitado para crear '
+                  'borradores de prueba. '
+                  'Los demás módulos se activarán '
+                  'progresivamente. '
+                  'La conexión disponible no significa '
+                  'que ya se registren operaciones reales.',
                 ),
               ),
             ),
@@ -192,7 +254,11 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _HomeModule {
-  const _HomeModule(this.title, this.icon, this.subtitle);
+  const _HomeModule(
+    this.title,
+    this.icon,
+    this.subtitle,
+  );
 
   final String title;
   final IconData icon;
