@@ -18,39 +18,19 @@ import 'document_detail_screen.dart';
 
 const _customerTypes = ['Individual', 'Company', 'Partnership'];
 const _customerTypeLabels = {
-  'Individual': 'فرد',
-  'Company': 'شركة',
-  'Partnership': 'شراكة',
+  'Individual': 'Individuo',
+  'Company': 'Empresa',
+  'Partnership': 'Sociedad',
 };
 
-/// Formats a locally-entered Egyptian mobile number (`01xxxxxxxxx`) into the
-/// `+20xxxxxxxxxx` E.164-ish form the server's `custom_رقم_الهاتف` Phone
-/// field actually requires — confirmed live: a plain `01xxxxxxxxx` value is
-/// rejected with `InvalidPhoneNumberError` ("Please select a country code").
-/// Leaves an already-prefixed value (`+...`) untouched.
+/// Formatea el número ingresado localmente para agregar el código de país.
 String _formatPhone(String raw) {
   final trimmed = raw.trim();
   if (trimmed.isEmpty || trimmed.startsWith('+')) return trimmed;
   final digits = trimmed.startsWith('0') ? trimmed.substring(1) : trimmed;
-  return '+20$digits';
+  return '+593$digits'; // Ajustado al código de Ecuador
 }
 
-/// New-customer registration AND editing — `POST`/`PUT
-/// /api/resource/Customer`. Every field name below is confirmed from a real
-/// ERD dump of this site's `Customer` DocType (not guessed — see
-/// docs/API_INTEGRATION_NOTES.md), including the Arabic-named custom fields
-/// (`custom_رقم_الهاتف`/`custom_رقم_الهاتف_اخر`/`custom_العنوان`/
-/// `custom_الضمانات` — the last one is `reqd=1` on the server, so it's
-/// required here too) and the Geolocation field `custom_location`.
-///
-/// Registration/edits now go through a real approval Workflow
-/// ("موافقات العملاء", created server-side) — `disabled` is kept in sync
-/// with `workflow_state` by a server script, so this screen no longer needs
-/// to fake it. `territory` and `sales_team` are auto-assigned on CREATE
-/// only, same pattern as Sales Order/Invoice.
-///
-/// When [editDoc] is given, the screen edits that existing customer instead
-/// of creating a new one — same `editDoc` pattern as `SalesOrderScreen`.
 class CustomerRegistrationScreen extends StatefulWidget {
   const CustomerRegistrationScreen({super.key, this.editDoc});
 
@@ -88,8 +68,6 @@ class _CustomerRegistrationScreenState
   String? _capturedLocationGeoJson;
   bool _capturingLocation = false;
 
-  /// النظام العامل يفتحه لو فشل تحديد الموقع لسبب قابل للحل من الإعدادات
-  /// (GPS مقفول / صلاحية مرفوضة نهائيًا) — نفس نمط [SalesOrderScreen].
   Future<void> Function()? _locationFix;
 
   bool get _isEditing => widget.editDoc != null;
@@ -117,8 +95,6 @@ class _CustomerRegistrationScreenState
 
     final guarantees = doc['custom_الضمانات'];
     if (guarantees is String) {
-      // Text Editor field — may carry HTML from Desk; strip tags for the
-      // plain-text field here, best-effort.
       _guaranteesController.text = guarantees
           .replaceAll(RegExp(r'<[^>]*>'), '')
           .trim();
@@ -150,10 +126,6 @@ class _CustomerRegistrationScreenState
     }
   }
 
-  /// Silent single-territory auto-assign, or a required picker when the
-  /// rep genuinely has more than one — same layered lookup already proven
-  /// for Sales Order/Invoice territory scoping. Never blocks the form on
-  /// failure (falls back to letting the server/manager assign it later).
   Future<void> _resolveTerritory() async {
     try {
       final territories = await ErpService.getExpandedUserTerritories();
@@ -182,13 +154,10 @@ class _CustomerRegistrationScreenState
     super.dispose();
   }
 
-  /// Best-effort device location for `custom_location` — never blocks
-  /// registration. Sets [_locationStatus] with the exact reason on every
-  /// path so a failure is visible instead of looking identical to success.
   Future<String?> _captureLocationGeoJson() async {
     try {
       if (!await Geolocator.isLocationServiceEnabled()) {
-        _locationStatus = 'خدمة الموقع (GPS) مقفولة على الجهاز';
+        _locationStatus = 'El GPS está apagado en el dispositivo';
         _locationFix = Geolocator.openLocationSettings;
         return null;
       }
@@ -198,13 +167,13 @@ class _CustomerRegistrationScreenState
         permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.denied) {
-        _locationStatus = 'تم رفض صلاحية الموقع';
+        _locationStatus = 'Permiso de ubicación denegado';
         _locationFix = null;
         return null;
       }
       if (permission == LocationPermission.deniedForever) {
         _locationStatus =
-            'صلاحية الموقع مرفوضة نهائيًا — فعّلها من إعدادات التطبيق بالجهاز';
+            'Permiso denegado permanentemente. Actívalo en la configuración de la app.';
         _locationFix = Geolocator.openAppSettings;
         return null;
       }
@@ -217,7 +186,7 @@ class _CustomerRegistrationScreenState
       );
 
       _locationStatus =
-          'تم تحديد الموقع (${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)})';
+          'Ubicación obtenida (${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)})';
       _locationFix = null;
       return jsonEncode({
         'type': 'FeatureCollection',
@@ -233,15 +202,12 @@ class _CustomerRegistrationScreenState
         ],
       });
     } catch (e) {
-      _locationStatus = 'خطأ أثناء تحديد الموقع: $e';
+      _locationStatus = 'Error al obtener la ubicación: $e';
       _locationFix = null;
       return null;
     }
   }
 
-  /// زرار "تسجيل الموقع" الصريح — بيلتقط ويعرض النتيجة فورًا قبل الحفظ،
-  /// بدل الالتقاط الصامت جوه [_submit] بس. لو فشل لسبب قابل للحل، الرسالة
-  /// بتحمل زرار يفتح إعدادات الموقع/التطبيق مباشرة.
   Future<void> _onCaptureLocationTap() async {
     setState(() => _capturingLocation = true);
     final result = await _captureLocationGeoJson();
@@ -256,7 +222,7 @@ class _CustomerRegistrationScreenState
         content: Text(_locationStatus ?? ''),
         action: fix == null
             ? null
-            : SnackBarAction(label: 'فتح الإعدادات', onPressed: () => fix()),
+            : SnackBarAction(label: 'Configuración', onPressed: () => fix()),
         duration: const Duration(seconds: 4),
       ),
     );
@@ -287,7 +253,7 @@ class _CustomerRegistrationScreenState
               const Padding(
                 padding: EdgeInsets.all(16),
                 child: Text(
-                  'اختر المنطقة',
+                  'Seleccionar Ruta / Región',
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
                 ),
               ),
@@ -369,8 +335,6 @@ class _CustomerRegistrationScreenState
     if (result != null) onPicked(result);
   }
 
-  /// `false` هنا معناها فشل حقيقي — [SwipeToConfirmButton] بيعكسها كحالة
-  /// حمراء بدل ما يفترض النجاح لمجرد إن حركة السحب خلصت.
   Future<bool> _submit() async {
     setState(() {
       _submitting = true;
@@ -378,18 +342,14 @@ class _CustomerRegistrationScreenState
       _lastSubmitWasQueued = false;
     });
 
-    // Declared outside the `try` so `catch` can still reach it to enqueue
-    // an offline job.
     Map<String, dynamic>? body;
     try {
-      // لو المستخدم ضغط زرار "تسجيل الموقع" صراحة قبل كدا، استخدم نتيجته
-      // بدل إعادة الالتقاط — وإلا نفس الالتقاط الصامت القديم كـ fallback.
       final locationGeoJson =
           _capturedLocationGeoJson ?? await _captureLocationGeoJson();
       if (mounted && _capturedLocationGeoJson == null && _locationStatus != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('الموقع: $_locationStatus'),
+            content: Text('Ubicación: $_locationStatus'),
             duration: const Duration(seconds: 3),
           ),
         );
@@ -446,7 +406,7 @@ class _CustomerRegistrationScreenState
           if (!mounted) return true;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('لا يوجد اتصال — سيُحفظ التعديل تلقائيًا'),
+              content: Text('Sin internet — Los cambios se guardarán automáticamente'),
             ),
           );
           Navigator.of(context).pop();
@@ -467,13 +427,6 @@ class _CustomerRegistrationScreenState
         return true;
       }
 
-      // `account_manager` only needs the already-locally-stored user id —
-      // safe to resolve even offline. `credit_limits` (needs
-      // `resolveDefaultCompany`) and `sales_team` (needs
-      // `resolveCurrentSalesPerson`) both need a live server round trip,
-      // so they're deferred to `SyncEngine`'s replay when queued offline
-      // — see `_proposedCreditLimit` below and
-      // `SyncEngine._replayCustomerRegistrationCreate`.
       final currentUserId = await AuthService.currentUserId();
       if (currentUserId != null) {
         body['account_manager'] = currentUserId;
@@ -493,7 +446,7 @@ class _CustomerRegistrationScreenState
         if (!mounted) return true;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('لا يوجد اتصال — تم حفظ العميل وسيُرسل تلقائيًا'),
+            content: Text('Sin internet — Cliente guardado en cola para sincronizar'),
           ),
         );
         return true;
@@ -524,7 +477,7 @@ class _CustomerRegistrationScreenState
       } else {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('تم تسجيل العميل بنجاح')));
+        ).showSnackBar(const SnackBar(content: Text('Cliente registrado exitosamente')));
       }
       return true;
     } catch (e) {
@@ -545,7 +498,7 @@ class _CustomerRegistrationScreenState
           if (!mounted) return true;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('تعذر الاتصال — سيُحفظ التعديل تلقائيًا'),
+              content: Text('Fallo de red — Cambios guardados en modo offline'),
             ),
           );
           Navigator.of(context).pop();
@@ -559,7 +512,7 @@ class _CustomerRegistrationScreenState
         if (!mounted) return true;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('تعذر الاتصال — تم حفظ العميل وسيُرسل تلقائيًا'),
+            content: Text('Fallo de red — Cliente guardado en modo offline'),
           ),
         );
         return true;
@@ -578,7 +531,7 @@ class _CustomerRegistrationScreenState
     return Scaffold(
       backgroundColor: AppColors.lightGray,
       appBar: AppBar(
-        title: Text(_isEditing ? 'تعديل بيانات العميل' : 'تسجيل عميل جديد'),
+        title: Text(_isEditing ? 'Editar Cliente' : 'Nuevo Cliente'),
       ),
       body: SafeArea(
         child: Column(
@@ -587,49 +540,49 @@ class _CustomerRegistrationScreenState
               child: ListView(
                 padding: const EdgeInsets.all(20),
                 children: [
-                  _label('اسم العميل'),
+                  _label('Nombre del Cliente'),
                   TextFormField(
                     controller: _nameController,
                     decoration: const InputDecoration(
-                      hintText: 'اسم العميل / المحل',
+                      hintText: 'Nombre del negocio o persona',
                     ),
                     onChanged: (_) => setState(() {}),
                   ),
                   const SizedBox(height: 16),
-                  _label('نوع العميل'),
+                  _label('Tipo de Cliente'),
                   _buildCustomerTypeSelector(),
                   const SizedBox(height: 16),
-                  _label('الرقم القومي'),
+                  _label('Cédula / RUC'),
                   TextFormField(
                     controller: _nationalIdController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(hintText: 'الرقم القومي للعميل المكون من 14 رقم'),
+                    decoration: const InputDecoration(hintText: 'Número de identidad'),
                   ),
                   const SizedBox(height: 16),
-                  _label('رقم الموبايل'),
+                  _label('Teléfono Celular'),
                   TextFormField(
                     controller: _phone1Controller,
                     keyboardType: TextInputType.phone,
-                    decoration: const InputDecoration(hintText: '01xxxxxxxxx'),
+                    decoration: const InputDecoration(hintText: '09xxxxxxxx'),
                     onChanged: (_) => setState(() {}),
                   ),
                   const SizedBox(height: 16),
-                  _label('رقم موبايل آخر '),
+                  _label('Teléfono Alternativo'),
                   TextFormField(
                     controller: _phone2Controller,
                     keyboardType: TextInputType.phone,
-                    decoration: const InputDecoration(hintText: '01xxxxxxxxx'),
+                    decoration: const InputDecoration(hintText: '09xxxxxxxx'),
                   ),
                   const SizedBox(height: 16),
-                  _label('العنوان '),
+                  _label('Dirección'),
                   TextFormField(
                     controller: _addressController,
                     decoration: const InputDecoration(
-                      hintText: 'العنوان بالتفصيل',
+                      hintText: 'Dirección exacta',
                     ),
                   ),
                   const SizedBox(height: 16),
-                  _label('الموقع'),
+                  _label('Ubicación GPS'),
                   Material(
                     color: AppColors.white,
                     borderRadius: BorderRadius.circular(AppRadius.field),
@@ -660,8 +613,8 @@ class _CustomerRegistrationScreenState
                             Expanded(
                               child: Text(
                                 _capturedLocationGeoJson != null
-                                    ? (_locationStatus ?? 'تم تحديد الموقع')
-                                    : 'تسجيل الموقع',
+                                    ? (_locationStatus ?? 'Ubicación registrada')
+                                    : 'Registrar Ubicación',
                                 style: TextStyle(
                                   color: _capturedLocationGeoJson != null
                                       ? AppColors.black
@@ -677,17 +630,17 @@ class _CustomerRegistrationScreenState
                     ),
                   ),
                   const SizedBox(height: 16),
-                  _label('الضمانات'),
+                  _label('Garantías'),
                   TextFormField(
                     controller: _guaranteesController,
                     maxLines: 3,
                     decoration: const InputDecoration(
-                      hintText: 'تفاصيل الضمانات...',
+                      hintText: 'Detalles de las garantías...',
                     ),
                     onChanged: (_) => setState(() {}),
                   ),
                   const SizedBox(height: 16),
-                  _label('سقف الدين المقترح '),
+                  _label('Límite de Crédito Propuesto'),
                   TextFormField(
                     controller: _creditLimitController,
                     keyboardType: const TextInputType.numberWithOptions(
@@ -696,57 +649,57 @@ class _CustomerRegistrationScreenState
                     decoration: const InputDecoration(hintText: '0.00'),
                   ),
                   const SizedBox(height: 16),
-                  _label('المجموعة '),
+                  _label('Grupo'),
                   _buildPickerField(
                     label: _customerGroup?.label,
-                    hint: 'اختر مجموعة العميل',
+                    hint: 'Seleccionar grupo',
                     onTap: () => _pickLink(
                       doctype: 'Customer Group',
                       searchField: 'name',
-                      title: 'اختر مجموعة العميل',
+                      title: 'Seleccionar grupo',
                       onPicked: (r) => setState(() => _customerGroup = r),
                     ),
                   ),
                   if (_customerType == 'Individual') ...[
                     const SizedBox(height: 16),
-                    _label('النوع '),
+                    _label('Género'),
                     _buildPickerField(
                       label: _gender?.label,
-                      hint: 'اختر النوع',
+                      hint: 'Seleccionar género',
                       onTap: () => _pickLink(
                         doctype: 'Gender',
                         searchField: 'name',
-                        title: 'اختر النوع',
+                        title: 'Seleccionar género',
                         onPicked: (r) => setState(() => _gender = r),
                       ),
                     ),
                   ],
                   const SizedBox(height: 16),
-                  _label('قائمة الأسعار '),
+                  _label('Lista de Precios'),
                   _buildPickerField(
                     label: _priceList?.label,
-                    hint: 'اختر قائمة الأسعار',
+                    hint: 'Seleccionar lista',
                     onTap: () => _pickLink(
                       doctype: 'Price List',
                       searchField: 'name',
-                      title: 'اختر قائمة الأسعار',
+                      title: 'Seleccionar lista',
                       onPicked: (r) => setState(() => _priceList = r),
                     ),
                   ),
                   const SizedBox(height: 16),
-                  _label('شروط الدفع '),
+                  _label('Términos de Pago'),
                   _buildPickerField(
                     label: _paymentTerms?.label,
-                    hint: 'اختر شروط الدفع',
+                    hint: 'Seleccionar términos',
                     onTap: () => _pickLink(
                       doctype: 'Payment Terms Template',
                       searchField: 'name',
-                      title: 'اختر شروط الدفع',
+                      title: 'Seleccionar términos',
                       onPicked: (r) => setState(() => _paymentTerms = r),
                     ),
                   ),
                   const SizedBox(height: 16),
-                  _label('المنطقة'),
+                  _label('Ruta / Región'),
                   if (_resolvingTerritory)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 8),
@@ -758,7 +711,7 @@ class _CustomerRegistrationScreenState
                     )
                   else if (_territoryChoices.isEmpty)
                     Text(
-                      _territory ?? 'سيتم تحديدها لاحقًا',
+                      _territory ?? 'Se asignará más tarde',
                       style: const TextStyle(
                         color: AppColors.midGray,
                         fontSize: 13,
@@ -767,7 +720,7 @@ class _CustomerRegistrationScreenState
                   else
                     _buildPickerField(
                       label: _territory,
-                      hint: 'اختر المنطقة',
+                      hint: 'Seleccionar Región',
                       onTap: _pickTerritory,
                     ),
                   if (_error != null) ...[
@@ -785,9 +738,9 @@ class _CustomerRegistrationScreenState
                   ignoring: !_canSubmit,
                   child: SwipeToConfirmButton(
                     label: _isEditing
-                        ? 'اسحب لحفظ التعديلات'
-                        : 'اسحب لتسجيل العميل',
-                    confirmedLabel: 'تم الحفظ',
+                        ? 'Desliza para guardar cambios'
+                        : 'Desliza para registrar cliente',
+                    confirmedLabel: 'Guardado',
                     onConfirmed: _submit,
                     wasQueued: () => _lastSubmitWasQueued,
                   ),
@@ -825,7 +778,7 @@ class _CustomerRegistrationScreenState
                   ),
                 ),
               ),
-              const Icon(Icons.chevron_left_rounded, color: AppColors.midGray),
+              const Icon(Icons.chevron_right_rounded, color: AppColors.midGray),
             ],
           ),
         ),
