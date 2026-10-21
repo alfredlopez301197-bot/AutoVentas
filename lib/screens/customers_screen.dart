@@ -29,9 +29,14 @@ class _CustomersScreenState extends State<CustomersScreen> {
   Set<String> _selectedTerritories = {};
   List<String> _availableTerritories = [];
 
+  // Filtro por día de visita (Ej: Lunes, Martes, etc.)
+  String? _selectedDay;
+  final List<String> _daysOfWeek = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+
   @override
   void initState() {
     super.initState();
+    _selectedDay = _getCurrentDayName();
     _fetchCustomers();
   }
 
@@ -39,6 +44,20 @@ class _CustomersScreenState extends State<CustomersScreen> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  String _getCurrentDayName() {
+    final now = DateTime.now();
+    switch (now.weekday) {
+      case DateTime.monday: return 'Lunes';
+      case DateTime.tuesday: return 'Martes';
+      case DateTime.wednesday: return 'Miércoles';
+      case DateTime.thursday: return 'Jueves';
+      case DateTime.friday: return 'Viernes';
+      case DateTime.saturday: return 'Sábado';
+      case DateTime.sunday: return 'Domingo';
+      default: return 'Lunes';
+    }
   }
 
   Future<void> _fetchCustomers() async {
@@ -57,12 +76,10 @@ class _CustomersScreenState extends State<CustomersScreen> {
       if (data['status'] == 'ok') {
         final List<dynamic> clientesData = data['clientes'] ?? [];
         
-        // Obtenemos el usuario activo desde el servicio
         final currentUser = GoogleSheetsService.currentUser ?? {};
         final String miRuta = (currentUser['ruta'] ?? '').toString();
         final String miRol = (currentUser['rol'] ?? '').toString().toLowerCase();
         
-        // Un Jefe o Administrador ve todo. El vendedor solo ve su ruta.
         final bool veTodo = miRol == 'jefe' || miRol == 'administrador' || miRuta.toLowerCase() == 'todas';
 
         final Set<String> rutas = {};
@@ -90,7 +107,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
             }
             _loading = false;
           });
-          _search('');
+          _search(_searchController.text);
         }
       } else {
         throw Exception(data['mensaje'] ?? 'Error al descargar clientes');
@@ -109,8 +126,17 @@ class _CustomersScreenState extends State<CustomersScreen> {
     final q = query.toLowerCase().trim();
     setState(() {
       _filteredCustomers = _allCustomers.where((c) {
+        // Filtro por ruta
         final matchRuta = _selectedTerritories.isEmpty || _selectedTerritories.contains(c['Ruta']);
         if (!matchRuta) return false;
+
+        // Filtro por Día de Visita (si está seleccionado)
+        if (_selectedDay != null && _selectedDay!.isNotEmpty) {
+          final diaVisita = (c['Dia_Visita'] ?? '').toString().trim();
+          if (diaVisita.isNotEmpty && diaVisita.toLowerCase() != _selectedDay!.toLowerCase()) {
+            return false;
+          }
+        }
 
         if (q.isEmpty) return true;
 
@@ -120,6 +146,19 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
         return nombre.contains(q) || prop.contains(q) || id.contains(q);
       }).toList();
+
+      // ORDENAR: Deudores siempre primero, luego por nombre
+      _filteredCustomers.sort((a, b) {
+        final deudaA = double.tryParse(a['Deuda_Actual']?.toString() ?? '0') ?? 0.0;
+        final deudaB = double.tryParse(b['Deuda_Actual']?.toString() ?? '0') ?? 0.0;
+        
+        if (deudaA != deudaB) {
+          return deudaB.compareTo(deudaA); // Mayor deuda arriba
+        }
+        final nombreA = (a['Nombre_Tienda'] ?? '').toString();
+        final nombreB = (b['Nombre_Tienda'] ?? '').toString();
+        return nombreA.compareTo(nombreB);
+      });
     });
   }
 
@@ -137,8 +176,6 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isJefe = (GoogleSheetsService.currentUser?['rol'] ?? '').toString().toLowerCase() == 'jefe';
-
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
@@ -156,7 +193,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
           // Buscador
           Container(
             color: Colors.white,
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: TextField(
               controller: _searchController,
               onChanged: _search,
@@ -171,38 +208,48 @@ class _CustomersScreenState extends State<CustomersScreen> {
             ),
           ),
           
-          // Filtros de ruta (Solo visibles si hay más de una ruta disponible y es jefe)
-          if (_availableTerritories.length > 1 && isJefe)
-            Container(
-              width: double.infinity,
-              color: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: _availableTerritories.map((ruta) {
-                    final isSelected = _selectedTerritories.contains(ruta);
+          // Selector de Día de Visita (Filtro rápido por día)
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: FilterChip(
+                      label: const Text('Todos los días'),
+                      selected: _selectedDay == null,
+                      onSelected: (selected) {
+                        setState(() {
+                          _selectedDay = null;
+                          _search(_searchController.text);
+                        });
+                      },
+                    ),
+                  ),
+                  ..._daysOfWeek.map((dia) {
+                    final isSelected = _selectedDay == dia;
                     return Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: FilterChip(
-                        label: Text(ruta),
+                        label: Text(dia),
                         selected: isSelected,
                         onSelected: (selected) {
                           setState(() {
-                            if (selected) {
-                              _selectedTerritories.add(ruta);
-                            } else {
-                              _selectedTerritories.remove(ruta);
-                            }
+                            _selectedDay = selected ? dia : null;
                             _search(_searchController.text);
                           });
                         },
                       ),
                     );
-                  }).toList(),
-                ),
+                  }),
+                ],
               ),
             ),
+          ),
+          const Divider(height: 1),
 
           // Lista de resultados
           Expanded(
@@ -213,6 +260,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       // BOTÓN FLOTANTE: NUEVO CLIENTE
       floatingActionButton: FloatingActionButton(
         backgroundColor: const Color(0xFFD4AF37),
+        tooltip: 'Nuevo Cliente',
         child: const Icon(Icons.person_add_alt_1_rounded, color: Colors.white),
         onPressed: () async {
           final creado = await Navigator.push(
@@ -260,9 +308,13 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
     if (_filteredCustomers.isEmpty) {
       return const Center(
-        child: Text(
-          'No se encontraron clientes en esta ruta.',
-          style: TextStyle(color: Colors.grey, fontSize: 16),
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'No hay clientes programados para este día o filtro.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey, fontSize: 16),
+          ),
         ),
       );
     }
@@ -275,13 +327,20 @@ class _CustomersScreenState extends State<CustomersScreen> {
         final nombre = c['Nombre_Tienda']?.toString() ?? 'Sin nombre';
         final prop = c['Propietario']?.toString() ?? 'Sin propietario';
         final ruta = c['Ruta']?.toString() ?? 'Sin ruta';
+        final diaVisita = c['Dia_Visita']?.toString() ?? '';
         final limite = c['Limite_Credito']?.toString() ?? '0.00';
-        final deuda = c['Deuda_Actual']?.toString() ?? '0.00';
+        final deudaStr = c['Deuda_Actual']?.toString() ?? '0.00';
+        final deudaVal = double.tryParse(deudaStr) ?? 0.0;
 
         return Card(
-          elevation: 2,
+          elevation: deudaVal > 0 ? 3 : 2,
           margin: const EdgeInsets.only(bottom: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: deudaVal > 0 
+                ? BorderSide(color: Colors.red.withOpacity(0.5), width: 1.2)
+                : BorderSide.none,
+          ),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -296,17 +355,18 @@ class _CustomersScreenState extends State<CustomersScreen> {
                         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
+                    if (diaVisita.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          diaVisita,
+                          style: const TextStyle(color: Colors.brown, fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
                       ),
-                      child: Text(
-                        ruta,
-                        style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 12),
-                      ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -317,8 +377,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
                   children: [
                     Text('Límite: \$ $limite', style: const TextStyle(fontSize: 13)),
                     Text(
-                      'Deuda: \$ $deuda',
-                      style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 13),
+                      'Deuda: \$ $deudaStr',
+                      style: TextStyle(
+                        color: deudaVal > 0 ? Colors.red : Colors.green[700],
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
                     ),
                   ],
                 ),
@@ -339,7 +403,6 @@ class _CustomersScreenState extends State<CustomersScreen> {
                           backgroundColor: const Color(0xFFD4AF37),
                           foregroundColor: Colors.white,
                         ),
-                        // BOTÓN VENDER: AHORA SÍ ABRE LA PANTALLA DE PEDIDOS
                         onPressed: () {
                           Navigator.push(
                             context,
