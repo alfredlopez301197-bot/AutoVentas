@@ -91,7 +91,7 @@ final _router = GoRouter(
     GoRoute(
       path: '/sales-order',
       builder: (context, state) =>
-          SalesOrderScreen(editDoc: state.extra as Map<String, dynamic>?),
+          const SalesOrderScreen(idCliente: 'CF', nombreCliente: 'Consumidor Final'),
     ),
     GoRoute(
       path: '/sales-invoice',
