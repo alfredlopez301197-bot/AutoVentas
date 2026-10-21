@@ -19,17 +19,8 @@ class GoogleSheetsService {
   /// Comprueba que la API pública esté disponible.
   static Future<bool> ping() async {
     try {
-      final response = await http
-          .get(Uri.parse(apiUrl))
-          .timeout(_timeout);
-
-      if (response.statusCode != 200) return false;
-
-      final data = jsonDecode(response.body);
-
-      return data is Map &&
-          data['status'] == 'ok' &&
-          data['aplicacion'] == 'AutoVentas';
+      final response = await http.get(Uri.parse(apiUrl)).timeout(_timeout);
+      return response.statusCode == 200;
     } catch (_) {
       return false;
     }
@@ -40,14 +31,19 @@ class GoogleSheetsService {
     required String usuario,
     required String password,
   }) async {
-    // Armamos el enlace exactamente como probaste en el navegador
     final userEncoded = Uri.encodeComponent(usuario.trim());
     final passEncoded = Uri.encodeComponent(password);
     final urlLogin = '$apiUrl?user=$userEncoded&pass=$passEncoded';
 
-    final response = await http
-        .get(Uri.parse(urlLogin))
-        .timeout(_timeout);
+    var response = await http.get(Uri.parse(urlLogin)).timeout(_timeout);
+    
+    // Si Google redirige, seguimos la ruta (Error 302 / 303)
+    if (response.statusCode == 302 || response.statusCode == 303) {
+      final location = response.headers['location'];
+      if (location != null) {
+        response = await http.get(Uri.parse(location)).timeout(_timeout);
+      }
+    }
 
     if (response.statusCode != 200) {
       throw Exception('Error HTTP ${response.statusCode} al iniciar sesión.');
@@ -61,14 +57,17 @@ class GoogleSheetsService {
 
     final result = Map<String, dynamic>.from(decoded);
 
-    // Validamos el success que devuelve tu Google Sheets
     if (result['success'] == true) {
-      // Creamos una sesión local para autorizar las operaciones de ventas
       _session = 'sesion_activa_${DateTime.now().millisecondsSinceEpoch}';
+      
+      // Guardamos la info del rol y ruta para usarla en todo el sistema
+      final datosUsuario = result['usuario'] as Map<String, dynamic>? ?? {};
       
       _currentUser = {
         'usuario': usuario,
-        'nombre': usuario.toUpperCase(),
+        'nombre': datosUsuario['nombre'] ?? usuario.toUpperCase(),
+        'rol': datosUsuario['rol'] ?? '',
+        'ruta': datosUsuario['ruta'] ?? '',
       };
 
       return _currentUser!;
@@ -79,60 +78,52 @@ class GoogleSheetsService {
     }
   }
 
-  /// Envía solicitudes autenticadas (Visitas, Pedidos, Cobros) a Apps Script.
+  /// Envía solicitudes (Clientes, Visitas, Pedidos, Cobros) a Apps Script.
   static Future<Map<String, dynamic>> post({
     required Map<String, dynamic> body,
   }) async {
-    final session = _session;
+    // Forzamos al cliente a atrapar el salto de Google para evitar que la app se congele.
+    final client = http.Client();
+    try {
+      final request = http.Request('POST', Uri.parse(apiUrl))
+        ..headers['Content-Type'] = 'text/plain; charset=utf-8' // Clave para evitar problemas CORS
+        ..body = jsonEncode(body)
+        ..followRedirects = false; // Detenemos la redirección automática
 
-    if (session == null || session.isEmpty) {
-      throw Exception('No hay una sesión activa. Inicia sesión nuevamente.');
-    }
+      final streamedResponse = await client.send(request).timeout(_timeout);
+      http.Response response = await http.Response.fromStream(streamedResponse);
 
-    final payload = <String, dynamic>{
-      ...body,
-      'sesion': session,
-    };
-
-    final response = await http
-        .post(
-          Uri.parse(apiUrl),
-          headers: const {
-            'Content-Type': 'text/plain; charset=utf-8',
-          },
-          body: jsonEncode(payload),
-        )
-        .timeout(_timeout);
-
-    if (response.statusCode != 200) {
-      throw Exception('Error HTTP ${response.statusCode}.');
-    }
-
-    final decoded = jsonDecode(response.body);
-
-    if (decoded is! Map) {
-      throw const FormatException('La API devolvió una respuesta inválida.');
-    }
-
-    final result = Map<String, dynamic>.from(decoded);
-
-    if (result['status'] != 'ok') {
-      final message = (result['mensaje'] ?? 'Google Sheets rechazó la solicitud.').toString();
-      if (message.toLowerCase().contains('sesión')) {
-        _clearSession();
+      // ¡AQUÍ ESTÁ LA SOLUCIÓN! Atrapamos el 302 y vamos directo a la URL con la respuesta.
+      if (response.statusCode == 302 || response.statusCode == 303) {
+        final redirectUrl = response.headers['location'];
+        if (redirectUrl != null) {
+          response = await client.get(Uri.parse(redirectUrl)).timeout(_timeout);
+        }
       }
-      throw Exception(message);
+
+      if (response.statusCode != 200) {
+        throw Exception('Error HTTP ${response.statusCode}. Verifica tu conexión.');
+      }
+
+      final decoded = jsonDecode(response.body);
+
+      if (decoded is! Map) {
+        throw const FormatException('La API devolvió una respuesta inválida.');
+      }
+
+      final result = Map<String, dynamic>.from(decoded);
+
+      if (result['status'] != 'ok') {
+        throw Exception((result['mensaje'] ?? 'Google Sheets rechazó la solicitud.').toString());
+      }
+
+      return result;
+    } finally {
+      client.close();
     }
-
-    return result;
   }
 
-  /// Cierra la sesión local de Flutter.
   static void logout() {
-    _clearSession();
-  }
-
-  static void _clearSession() {
     _session = null;
     _currentUser = null;
   }
