@@ -28,6 +28,9 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
   bool _guardando = false;
   String _tipoPago = 'Contado'; 
 
+  // Filtro de categoría seleccionado ('Todos', 'Pan', 'Galleteria')
+  String _filtroCategoria = 'Todos';
+
   @override
   void initState() {
     super.initState();
@@ -68,7 +71,12 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
       final id = prod['ID_Producto'].toString();
       final cantidad = _carrito[id] ?? 0;
       if (cantidad > 0) {
-        final precio = double.tryParse(prod['Precio_Venta'].toString()) ?? 0.0;
+        final nombre = (prod['Nombre'] ?? '').toString().toLowerCase();
+        // Si es pan, aseguramos el precio especial de 0.13 o el que venga del sistema
+        double precio = double.tryParse(prod['Precio_Venta'].toString()) ?? 0.0;
+        if (nombre.contains('pan') && precio == 0.0) {
+          precio = 0.13;
+        }
         total += cantidad * precio;
       }
     }
@@ -121,7 +129,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
                   onPressed: () {
-                    Navigator.pop(context); // Cierra diálogo
+                    Navigator.pop(context);
                     _registrarNoCompraEnServidor(motivoSeleccionado);
                   },
                   child: const Text('Registrar y Salir'),
@@ -141,7 +149,6 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
       final currentUser = GoogleSheetsService.currentUser ?? {};
       final idVendedor = (currentUser['usuario'] ?? 'Desc').toString();
 
-      // Aquí enviamos la visita fallida junto al motivo y las coordenadas GPS (si el backend las procesa o toma ubicación actual)
       await GoogleSheetsService.post(
         body: {
           'action': 'registrar_no_compra',
@@ -156,7 +163,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Visita registrada: No hubo compra'), backgroundColor: Colors.orange),
       );
-      Navigator.pop(context); // Regresa a la lista de clientes
+      Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
@@ -182,10 +189,14 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
         final id = prod['ID_Producto'].toString();
         final cantidad = _carrito[id] ?? 0;
         if (cantidad > 0) {
-          final precio = double.tryParse(prod['Precio_Venta'].toString()) ?? 0.0;
+          final nombre = (prod['Nombre'] ?? '').toString();
+          double precio = double.tryParse(prod['Precio_Venta'].toString()) ?? 0.0;
+          if (nombre.toLowerCase().contains('pan') && precio == 0.0) {
+            precio = 0.13;
+          }
           items.add({
             'idProducto': id,
-            'nombre': prod['Nombre']?.toString() ?? '',
+            'nombre': nombre,
             'cantidad': cantidad,
             'precio': precio,
             'subtotal': cantidad * precio,
@@ -208,7 +219,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('¡Venta registrada con éxito!'), backgroundColor: Colors.green));
-      Navigator.pop(context); // Regresa a la lista de clientes
+      Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
@@ -219,11 +230,19 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Filtrar productos según la pestaña seleccionada (Pan vs Galletería)
+    final productosFiltrados = _productos.where((prod) {
+      final nombre = (prod['Nombre'] ?? '').toString().toLowerCase();
+      final esPan = nombre.contains('pan');
+      if (_filtroCategoria == 'Pan') return esPan;
+      if (_filtroCategoria == 'Galleteria') return !esPan;
+      return true; // Todos
+    }).toList();
+
     return Scaffold(
       appBar: AppBar(
         title: Text('Vender a: ${widget.nombreCliente}'),
         actions: [
-          // BOTÓN RÁPIDO DE "NO COMPRÓ" EN LA BARRA SUPERIOR
           TextButton.icon(
             style: TextButton.styleFrom(foregroundColor: Colors.white),
             onPressed: _guardando ? null : _mostrarDialogoNoCompra,
@@ -238,21 +257,52 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
               ? Center(child: Text(_error!, style: const TextStyle(color: Colors.red)))
               : Column(
                   children: [
+                    // Fila de Tipo de Pago y Selector de Categoría (Pan / Galletería)
                     Container(
                       color: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      child: Column(
                         children: [
-                          const Text('Tipo de pago:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                          DropdownButton<String>(
-                            value: _tipoPago,
-                            items: ['Contado', 'Credito'].map((String val) {
-                              return DropdownMenuItem<String>(value: val, child: Text(val));
-                            }).toList(),
-                            onChanged: (val) {
-                              if (val != null) setState(() => _tipoPago = val);
-                            },
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Tipo de pago:', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                              DropdownButton<String>(
+                                value: _tipoPago,
+                                items: ['Contado', 'Credito'].map((String val) {
+                                  return DropdownMenuItem<String>(value: val, child: Text(val));
+                                }).toList(),
+                                onChanged: (val) {
+                                  if (val != null) setState(() => _tipoPago = val);
+                                },
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 12),
+                          // Pestañas de filtrado rápido (Pan matutino vs Galletería)
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                ChoiceChip(
+                                  label: const Text('📋 Todos'),
+                                  selected: _filtroCategoria == 'Todos',
+                                  onSelected: (selected) => setState(() => _filtroCategoria = 'Todos'),
+                                ),
+                                const SizedBox(width: 8),
+                                ChoiceChip(
+                                  label: const Text('🍞 Pan Matutino (\$0.13)'),
+                                  selected: _filtroCategoria == 'Pan',
+                                  onSelected: (selected) => setState(() => _filtroCategoria = 'Pan'),
+                                ),
+                                const SizedBox(width: 8),
+                                ChoiceChip(
+                                  label: const Text('🍪 Galletería / Otros'),
+                                  selected: _filtroCategoria == 'Galleteria',
+                                  onSelected: (selected) => setState(() => _filtroCategoria = 'Galleteria'),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
@@ -260,16 +310,27 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
                     const Divider(height: 1),
                     Expanded(
                       child: ListView.builder(
-                        itemCount: _productos.length,
+                        itemCount: productosFiltrados.length,
                         itemBuilder: (context, index) {
-                          final prod = _productos[index];
+                          final prod = productosFiltrados[index];
                           final id = prod['ID_Producto'].toString();
                           final nombre = prod['Nombre'].toString();
-                          final precio = double.tryParse(prod['Precio_Venta'].toString()) ?? 0.0;
+                          
+                          // Precio predeterminado a 0.13 si es pan y no tiene precio asignado
+                          double precio = double.tryParse(prod['Precio_Venta'].toString()) ?? 0.0;
+                          if (nombre.toLowerCase().contains('pan') && precio == 0.0) {
+                            precio = 0.13;
+                          }
+
                           final cantidad = _carrito[id] ?? 0;
+                          final esPan = nombre.toLowerCase().contains('pan');
 
                           return Card(
                             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: esPan ? const BorderSide(color: Colors.amber, width: 1.5) : BorderSide.none,
+                            ),
                             child: Padding(
                               padding: const EdgeInsets.all(12),
                               child: Row(
@@ -278,7 +339,22 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(nombre, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                        Row(
+                                          children: [
+                                            Text(nombre, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                            if (esPan) ...[
+                                              const SizedBox(width: 6),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.amber.withOpacity(0.2),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                                child: const Text('PAN', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.brown)),
+                                              ),
+                                            ]
+                                          ],
+                                        ),
                                         const SizedBox(height: 4),
                                         Text('\$${precio.toStringAsFixed(2)}', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
                                       ],
