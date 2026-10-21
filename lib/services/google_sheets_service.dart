@@ -1,11 +1,9 @@
 import 'dart:convert';
-
 import 'package:http/http.dart' as http;
 
 class GoogleSheetsService {
   static const String apiUrl =
-      'https://script.google.com/macros/s/'
-      'AKfycbz6Dhi_ysLgfc6O1renR2FiIoinWJ6QyuM3n_t3vzuPE7HK1mnnb1P4V3N4q8Z-L1-v/exec';
+      'https://script.google.com/macros/s/AKfycbz6Dhi_ysLgfc6O1renR2FiIoinWJ6QyuM3n_t3vzuPE7HK1mnnb1P4V3N4q8Z-L1-v/exec';
 
   static const Duration _timeout = Duration(seconds: 20);
 
@@ -37,75 +35,58 @@ class GoogleSheetsService {
     }
   }
 
-  /// Inicia sesión contra la hoja Usuarios de Apps Script.
+  /// Inicia sesión consultando el GET de Apps Script (?user=...&pass=...)
   static Future<Map<String, dynamic>> login({
     required String usuario,
     required String password,
   }) async {
+    // Armamos el enlace exactamente como probaste en el navegador
+    final userEncoded = Uri.encodeComponent(usuario.trim());
+    final passEncoded = Uri.encodeComponent(password);
+    final urlLogin = '$apiUrl?user=$userEncoded&pass=$passEncoded';
+
     final response = await http
-        .post(
-          Uri.parse(apiUrl),
-          headers: const {
-            'Content-Type': 'text/plain; charset=utf-8',
-          },
-          body: jsonEncode({
-            'action': 'login',
-            'usuario': usuario.trim(),
-            'password': password,
-          }),
-        )
+        .get(Uri.parse(urlLogin))
         .timeout(_timeout);
 
     if (response.statusCode != 200) {
-      throw Exception(
-        'Error HTTP ${response.statusCode} al iniciar sesión.',
-      );
+      throw Exception('Error HTTP ${response.statusCode} al iniciar sesión.');
     }
 
     final decoded = jsonDecode(response.body);
 
     if (decoded is! Map) {
-      throw const FormatException(
-        'Respuesta inválida del servidor.',
-      );
+      throw const FormatException('Respuesta inválida del servidor.');
     }
 
     final result = Map<String, dynamic>.from(decoded);
 
-    final session = result['sesion'];
-    final user = result['usuario'];
+    // Validamos el success que devuelve tu Google Sheets
+    if (result['success'] == true) {
+      // Creamos una sesión local para autorizar las operaciones de ventas
+      _session = 'sesion_activa_${DateTime.now().millisecondsSinceEpoch}';
+      
+      _currentUser = {
+        'usuario': usuario,
+        'nombre': usuario.toUpperCase(),
+      };
 
-    if (result['status'] != 'ok' ||
-        result['success'] != true ||
-        session is! String ||
-        session.isEmpty) {
+      return _currentUser!;
+    } else {
       throw Exception(
-        result['mensaje'] ??
-            'Usuario o contraseña incorrectos.',
+        result['mensaje'] ?? 'Usuario o contraseña incorrectos.',
       );
     }
-
-    _session = session;
-
-    _currentUser = user is Map
-        ? Map<String, dynamic>.from(user)
-        : <String, dynamic>{};
-
-    return _currentUser!;
   }
 
-  /// Envía solicitudes autenticadas a Apps Script.
-  ///
-  /// Añade automáticamente la sesión a cada solicitud.
+  /// Envía solicitudes autenticadas (Visitas, Pedidos, Cobros) a Apps Script.
   static Future<Map<String, dynamic>> post({
     required Map<String, dynamic> body,
   }) async {
     final session = _session;
 
     if (session == null || session.isEmpty) {
-      throw Exception(
-        'No hay una sesión activa. Inicia sesión nuevamente.',
-      );
+      throw Exception('No hay una sesión activa. Inicia sesión nuevamente.');
     }
 
     final payload = <String, dynamic>{
@@ -124,30 +105,22 @@ class GoogleSheetsService {
         .timeout(_timeout);
 
     if (response.statusCode != 200) {
-      throw Exception(
-        'Error HTTP ${response.statusCode}.',
-      );
+      throw Exception('Error HTTP ${response.statusCode}.');
     }
 
     final decoded = jsonDecode(response.body);
 
     if (decoded is! Map) {
-      throw const FormatException(
-        'La API devolvió una respuesta inválida.',
-      );
+      throw const FormatException('La API devolvió una respuesta inválida.');
     }
 
     final result = Map<String, dynamic>.from(decoded);
 
     if (result['status'] != 'ok') {
-      final message = (result['mensaje'] ??
-              'Google Sheets rechazó la solicitud.')
-          .toString();
-
+      final message = (result['mensaje'] ?? 'Google Sheets rechazó la solicitud.').toString();
       if (message.toLowerCase().contains('sesión')) {
         _clearSession();
       }
-
       throw Exception(message);
     }
 
@@ -155,8 +128,6 @@ class GoogleSheetsService {
   }
 
   /// Cierra la sesión local de Flutter.
-  ///
-  /// La sesión del servidor caduca según su configuración.
   static void logout() {
     _clearSession();
   }
