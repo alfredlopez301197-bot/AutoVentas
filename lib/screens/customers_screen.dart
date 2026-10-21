@@ -2,12 +2,13 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-// import 'package:go_router/go_router.dart'; // Descomenta si usas GoRouter para navegar
 
 import '../services/google_sheets_service.dart';
 import '../theme/app_theme.dart';
-// Importa tus otras pantallas aquí si usas Navigator.push
+// Pantallas conectadas:
 import 'customer_statement_screen.dart'; 
+import 'new_customer_screen.dart';
+import 'sales_order_screen.dart';
 
 class CustomersScreen extends StatefulWidget {
   const CustomersScreen({super.key});
@@ -123,7 +124,6 @@ class _CustomersScreenState extends State<CustomersScreen> {
   }
 
   void _abrirEstadoCuenta(Map<String, dynamic> cliente) {
-    // Navegación a la pantalla limpia de cobros que hicimos hace un momento
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -171,7 +171,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
             ),
           ),
           
-          // Filtros de ruta (Solo visibles si hay más de una ruta disponible)
+          // Filtros de ruta (Solo visibles si hay más de una ruta disponible y es jefe)
           if (_availableTerritories.length > 1 && isJefe)
             Container(
               width: double.infinity,
@@ -209,6 +209,20 @@ class _CustomersScreenState extends State<CustomersScreen> {
             child: _buildList(),
           ),
         ],
+      ),
+      // BOTÓN FLOTANTE: NUEVO CLIENTE
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: const Color(0xFFD4AF37),
+        child: const Icon(Icons.person_add_alt_1_rounded, color: Colors.white),
+        onPressed: () async {
+          final creado = await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const NewCustomerScreen()),
+          );
+          if (creado == true) {
+            _fetchCustomers(); // Recarga la lista
+          }
+        },
       ),
     );
   }
@@ -325,10 +339,16 @@ class _CustomersScreenState extends State<CustomersScreen> {
                           backgroundColor: const Color(0xFFD4AF37),
                           foregroundColor: Colors.white,
                         ),
+                        // BOTÓN VENDER: AHORA SÍ ABRE LA PANTALLA DE PEDIDOS
                         onPressed: () {
-                          // Aquí conectaremos la pantalla de Pedidos
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Módulo de Pedidos en construcción...')),
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => SalesOrderScreen(
+                                idCliente: c['ID_Cliente']?.toString() ?? '',
+                                nombreCliente: c['Nombre_Tienda']?.toString() ?? '',
+                              ),
+                            ),
                           );
                         },
                         icon: const Icon(Icons.shopping_cart_checkout_rounded, size: 18),
