@@ -16,7 +16,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _checking = true;
   bool _connected = false;
 
-  // Lista optimizada con los 4 módulos esenciales para calle
+  // Lista optimizada con los 5 módulos esenciales para calle (incluyendo Cuadre)
   static const _modules = <_HomeModule>[
     _HomeModule(
       'Clientes',
@@ -37,6 +37,11 @@ class _HomeScreenState extends State<HomeScreen> {
       'Gastos',
       Icons.receipt_long_rounded,
       'Gastos del día',
+    ),
+    _HomeModule(
+      'Cuadre',
+      Icons.account_balance_wallet_rounded,
+      'Cierre de dinero y stock',
     ),
   ];
 
