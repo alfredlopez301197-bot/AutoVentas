@@ -1,9 +1,7 @@
-
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:http/http.dart' as http;
+
+import '../services/google_sheets_service.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -20,10 +18,7 @@ class _AuthScreenState extends State<AuthScreen> {
       TextEditingController();
 
   bool _isLoading = false;
-
-  static const String scriptUrl =
-      'https://script.google.com/macros/s/'
-      'AKfycbz6Dhi_ysLgfc6O1renR2FiIoinWJ6QyuM3n_t3vzuPE7HK1mnnb1P4V3N4q8Z-L1-v/exec';
+  bool _obscurePassword = true;
 
   @override
   void dispose() {
@@ -33,68 +28,45 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _login() async {
-    if (_userController.text.trim().isEmpty ||
-        _passController.text.isEmpty) {
-      _mostrarError('Ingresa tu usuario y contraseña');
+    final usuario = _userController.text.trim();
+    final password = _passController.text;
+
+    if (usuario.isEmpty || password.isEmpty) {
+      _mostrarError('Ingresa tu usuario y contraseña.');
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      // El inicio de sesión real necesita que Apps Script
-      // tenga habilitada la acción "login" por POST.
-      // No enviamos contraseñas en la URL.
-      final response = await http
-          .post(
-            Uri.parse(scriptUrl),
-            headers: const {
-              'Content-Type': 'text/plain; charset=utf-8',
-            },
-            body: jsonEncode({
-              'action': 'login',
-              'usuario': _userController.text.trim(),
-              'password': _passController.text,
-            }),
-          )
-          .timeout(const Duration(seconds: 20));
+      final user = await GoogleSheetsService.login(
+        usuario: usuario,
+        password: password,
+      );
 
       if (!mounted) return;
 
-      if (response.statusCode != 200) {
-        _mostrarError('No se pudo conectar con el servidor');
-        return;
+      final nombre = (user['nombre'] ?? usuario).toString();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Bienvenido, $nombre.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      context.go('/home');
+    } catch (e) {
+      if (!mounted) return;
+
+      var mensaje = e.toString().replaceFirst('Exception: ', '');
+
+      if (mensaje.contains('TimeoutException')) {
+        mensaje = 'El servidor tardó demasiado. '
+            'Comprueba tu conexión e inténtalo de nuevo.';
       }
 
-      final decoded = jsonDecode(response.body);
-
-      if (decoded is! Map) {
-        _mostrarError('Respuesta inválida del servidor');
-        return;
-      }
-
-      if (decoded['success'] == true &&
-          decoded['sesion'] is String &&
-          (decoded['sesion'] as String).isNotEmpty) {
-        // La integración de sesiones con el resto de
-        // la aplicación todavía está pendiente.
-        _mostrarError(
-          'El servidor respondió, pero falta integrar '
-          'la sesión segura en AutoVentas.',
-        );
-      } else {
-        _mostrarError(
-          'Inicio de sesión real todavía no disponible. '
-          'Puedes usar el modo de prueba.',
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        _mostrarError(
-          'No se pudo iniciar sesión. '
-          'Puedes usar el modo de prueba.',
-        );
-      }
+      _mostrarError(mensaje);
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -102,21 +74,20 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  void _mostrarError(String mensaje) {
-    if (!mounted) return;
+  void _entrarModoPrueba() {
+    // Solo permite visualizar la aplicación.
+    // No crea una sesión autenticada.
+    GoogleSheetsService.logout();
+    context.go('/home');
+  }
 
+  void _mostrarError(String mensaje) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(mensaje),
         backgroundColor: Colors.red,
       ),
     );
-  }
-
-  void _entrarModoPrueba() {
-    // Acceso de demostración, NO autenticación real.
-    // No se crea una sesión ni se conceden permisos.
-    context.go('/home');
   }
 
   @override
@@ -151,44 +122,75 @@ class _AuthScreenState extends State<AuthScreen> {
                 const SizedBox(height: 30),
                 TextField(
                   controller: _userController,
+                  enabled: !_isLoading,
                   textInputAction: TextInputAction.next,
+                  autocorrect: false,
                   decoration: const InputDecoration(
                     labelText: 'Usuario',
+                    prefixIcon: Icon(Icons.person_outline),
                     border: OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 15),
                 TextField(
                   controller: _passController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
+                  enabled: !_isLoading,
+                  obscureText: _obscurePassword,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) {
+                    if (!_isLoading) _login();
+                  },
+                  decoration: InputDecoration(
                     labelText: 'Contraseña',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 25),
-                if (_isLoading)
-                  const CircularProgressIndicator()
-                else
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      onPressed: _login,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            const Color(0xFFD4AF37),
-                        foregroundColor: Colors.white,
-                      ),
-                      child: const Text(
-                        'Ingresar',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      tooltip: _obscurePassword
+                          ? 'Mostrar contraseña'
+                          : 'Ocultar contraseña',
+                      onPressed: () {
+                        setState(() {
+                          _obscurePassword = !_obscurePassword;
+                        });
+                      },
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
                       ),
                     ),
                   ),
+                ),
+                const SizedBox(height: 25),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _login,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFD4AF37),
+                      foregroundColor: Colors.white,
+                    ),
+                    child: _isLoading
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            'Ingresar',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                  ),
+                ),
                 const SizedBox(height: 20),
                 const Divider(),
                 const SizedBox(height: 16),
@@ -206,9 +208,10 @@ class _AuthScreenState extends State<AuthScreen> {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'Modo de prueba: acceso visual sin '
-                  'autenticación. No se guardan ventas, '
-                  'pedidos ni cobros reales.',
+                  'El modo de prueba permite visualizar '
+                  'la aplicación sin autenticar al usuario. '
+                  'Las operaciones protegidas requieren '
+                  'una sesión válida.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 12,
