@@ -102,17 +102,18 @@ class _CuadreScreenState extends State<CuadreScreen> {
             SizedBox(
               width: double.infinity,
               height: 50,
-              child: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFD4AF37),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ).copyWith(
-                elevation: MaterialStateProperty.all(2),
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFD4AF37),
+                  foregroundColor: Colors.white,
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: _enviando ? null : _enviarCuadre,
+                child: _enviando
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Text('Enviar Cuadre al Supervisor', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ),
-              onPressed: _enviando ? null : _enviarCuadre,
-              child: _enviando
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text('Enviar Cuadre al Supervisor', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
           ],
         ),
