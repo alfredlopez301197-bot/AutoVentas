@@ -217,7 +217,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
         onPressed: () async {
           final creado = await Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const NewCustomerScreen()),
+            MaterialPageRoute(builder: (context) => NewCustomerScreen()),
           );
           if (creado == true) {
             _fetchCustomers(); // Recarga la lista
