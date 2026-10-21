@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart'; // Asegúrate de tener go_router en tu pubspec.yaml si lo usas
+import 'package:go_router/go_router.dart';
 
 import '../services/google_sheets_service.dart';
-import 'customers_screen.dart'; // Importamos tu nueva pantalla de clientes
+import 'customers_screen.dart'; // Importamos tu pantalla de clientes
 
-/// Pantalla principal de AutoVentas.
+/// Pantalla principal de Panda.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -16,66 +16,27 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _checking = true;
   bool _connected = false;
 
+  // Lista optimizada con los 4 módulos esenciales para calle
   static const _modules = <_HomeModule>[
-    _HomeModule(
-      'Ventas',
-      Icons.point_of_sale_rounded,
-      'Autoventa rápida',
-    ),
-    _HomeModule(
-      'Pedidos',
-      Icons.shopping_cart_rounded,
-      'Encargos de clientes',
-    ),
-    _HomeModule(
-      'Deudas',
-      Icons.request_quote_rounded,
-      'Saldos pendientes',
-    ),
-    _HomeModule(
-      'Cobros',
-      Icons.payments_rounded,
-      'Abonos y pagos',
-    ),
     _HomeModule(
       'Clientes',
       Icons.groups_rounded,
-      'Directorio de clientes',
+      'Directorio y deudores',
+    ),
+    _HomeModule(
+      'Ventas',
+      Icons.point_of_sale_rounded,
+      'Ventas y pedidos',
     ),
     _HomeModule(
       'Inventario',
       Icons.inventory_2_rounded,
-      'Existencias y movimientos',
-    ),
-    _HomeModule(
-      'Rutas',
-      Icons.route_rounded,
-      'Visitas y recorridos',
+      'Existencias',
     ),
     _HomeModule(
       'Gastos',
       Icons.receipt_long_rounded,
       'Gastos del día',
-    ),
-    _HomeModule(
-      'Consumo',
-      Icons.production_quantity_limits_rounded,
-      'Consumo de productos',
-    ),
-    _HomeModule(
-      'Kilometraje',
-      Icons.speed_rounded,
-      'Km inicial y final',
-    ),
-    _HomeModule(
-      'Cuadre de caja',
-      Icons.account_balance_wallet_rounded,
-      'Cierre diario',
-    ),
-    _HomeModule(
-      'Reportes',
-      Icons.bar_chart_rounded,
-      'Resumen de operaciones',
     ),
   ];
 
@@ -112,9 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openModule(_HomeModule module) {
-    // Ahora Ventas, Pedidos y Clientes te llevan a la lista de Clientes,
-    // que es el punto de partida seguro para cualquier operación en la calle.
-    if (module.title == 'Ventas' || module.title == 'Pedidos' || module.title == 'Clientes') {
+    if (module.title == 'Clientes' || module.title == 'Ventas') {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (context) => const CustomersScreen(),
@@ -132,7 +91,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('AutoVentas Panda'),
+        title: const Text('Panda'),
         actions: [
           IconButton(
             tooltip: 'Actualizar conexión',
@@ -160,12 +119,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Bienvenido a AutoVentas',
+                      'Bienvenido a Panda',
                       style: theme.textTheme.titleLarge,
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Ventas, clientes, rutas e inventario en un solo lugar.',
+                      'Control de ventas y rutas eficiente.',
                     ),
                     const SizedBox(height: 14),
                     Row(
@@ -208,7 +167,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 6),
             const Text(
-              'Selecciona Clientes, Ventas o Pedidos para iniciar tu recorrido.',
+              'Selecciona una opción para comenzar la ruta.',
             ),
             const SizedBox(height: 14),
             LayoutBuilder(
