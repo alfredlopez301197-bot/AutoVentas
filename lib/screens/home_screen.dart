@@ -1,14 +1,10 @@
-
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'package:go_router/go_router.dart'; // Asegúrate de tener go_router en tu pubspec.yaml si lo usas
 
 import '../services/google_sheets_service.dart';
-import 'sales_invoice_screen.dart';
-import 'sales_order_screen.dart';
+import 'customers_screen.dart'; // Importamos tu nueva pantalla de clientes
 
 /// Pantalla principal de AutoVentas.
-/// Ventas y Pedidos están habilitados en modo de prueba.
-/// Los módulos pendientes no registran datos reales.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -108,8 +104,7 @@ class _HomeScreenState extends State<HomeScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          '$module: pendiente de conectar '
-          'con Google Sheets.',
+          '$module: módulo en construcción.',
         ),
         duration: const Duration(seconds: 3),
       ),
@@ -117,21 +112,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openModule(_HomeModule module) {
-    if (module.title == 'Ventas') {
+    // Ahora Ventas, Pedidos y Clientes te llevan a la lista de Clientes,
+    // que es el punto de partida seguro para cualquier operación en la calle.
+    if (module.title == 'Ventas' || module.title == 'Pedidos' || module.title == 'Clientes') {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (context) =>
-              const SalesInvoiceScreen(),
-        ),
-      );
-      return;
-    }
-
-    if (module.title == 'Pedidos') {
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (context) =>
-              const SalesOrderScreen(),
+          builder: (context) => const CustomersScreen(),
         ),
       );
       return;
@@ -146,12 +132,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('AutoVentas'),
+        title: const Text('AutoVentas Panda'),
         actions: [
           IconButton(
             tooltip: 'Actualizar conexión',
-            onPressed:
-                _checking ? null : _checkConnection,
+            onPressed: _checking ? null : _checkConnection,
             icon: const Icon(Icons.refresh_rounded),
           ),
           IconButton(
@@ -172,18 +157,15 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(18),
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Bienvenido a AutoVentas',
-                      style:
-                          theme.textTheme.titleLarge,
+                      style: theme.textTheme.titleLarge,
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Ventas, clientes, rutas '
-                      'e inventario en un solo lugar.',
+                      'Ventas, clientes, rutas e inventario en un solo lugar.',
                     ),
                     const SizedBox(height: 14),
                     Row(
@@ -192,8 +174,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           const SizedBox(
                             width: 18,
                             height: 18,
-                            child:
-                                CircularProgressIndicator(
+                            child: CircularProgressIndicator(
                               strokeWidth: 2,
                             ),
                           )
@@ -202,9 +183,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             _connected
                                 ? Icons.cloud_done_rounded
                                 : Icons.cloud_off_rounded,
-                            color: _connected
-                                ? Colors.green
-                                : Colors.orange,
+                            color: _connected ? Colors.green : Colors.orange,
                           ),
                         const SizedBox(width: 10),
                         Expanded(
@@ -212,10 +191,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             _checking
                                 ? 'Comprobando conexión…'
                                 : _connected
-                                    ? 'Google Sheets disponible '
-                                      '(prueba de conexión)'
-                                    : 'Sin conexión confirmada '
-                                      'con Google Sheets',
+                                    ? 'Conexión exitosa con Google Sheets'
+                                    : 'Sin conexión confirmada con Google Sheets',
                           ),
                         ),
                       ],
@@ -226,31 +203,23 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 20),
             Text(
-              'Módulos de AutoVentas',
+              'Módulos de Operación',
               style: theme.textTheme.titleLarge,
             ),
             const SizedBox(height: 6),
             const Text(
-              'Ventas y Pedidos están disponibles '
-              'en modo de prueba. '
-              'Los demás módulos se activarán '
-              'progresivamente.',
+              'Selecciona Clientes, Ventas o Pedidos para iniciar tu recorrido.',
             ),
             const SizedBox(height: 14),
             LayoutBuilder(
               builder: (context, constraints) {
-                final columns =
-                    constraints.maxWidth >= 600
-                        ? 4
-                        : 2;
+                final columns = constraints.maxWidth >= 600 ? 4 : 2;
 
                 return GridView.builder(
                   shrinkWrap: true,
-                  physics:
-                      const NeverScrollableScrollPhysics(),
+                  physics: const NeverScrollableScrollPhysics(),
                   itemCount: _modules.length,
-                  gridDelegate:
-                      SliverGridDelegateWithFixedCrossAxisCount(
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: columns,
                     mainAxisSpacing: 12,
                     crossAxisSpacing: 12,
@@ -262,44 +231,34 @@ class _HomeScreenState extends State<HomeScreen> {
                     return Card(
                       clipBehavior: Clip.antiAlias,
                       child: InkWell(
-                        onTap: () =>
-                            _openModule(module),
+                        onTap: () => _openModule(module),
                         child: Padding(
-                          padding:
-                              const EdgeInsets.all(10),
+                          padding: const EdgeInsets.all(10),
                           child: Column(
-                            mainAxisAlignment:
-                                MainAxisAlignment.center,
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(
                                 module.icon,
                                 size: 30,
-                                color: theme
-                                    .colorScheme.primary,
+                                color: theme.colorScheme.primary,
                               ),
                               const SizedBox(height: 8),
                               Text(
                                 module.title,
-                                textAlign:
-                                    TextAlign.center,
+                                textAlign: TextAlign.center,
                                 maxLines: 1,
-                                overflow:
-                                    TextOverflow.ellipsis,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                  fontWeight:
-                                      FontWeight.bold,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 module.subtitle,
-                                textAlign:
-                                    TextAlign.center,
+                                textAlign: TextAlign.center,
                                 maxLines: 2,
-                                overflow:
-                                    TextOverflow.ellipsis,
-                                style: theme
-                                    .textTheme.bodySmall,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall,
                               ),
                             ],
                           ),
@@ -309,23 +268,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   },
                 );
               },
-            ),
-            const SizedBox(height: 16),
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: Text(
-                  'Ventas: prueba la selección '
-                  'de ruta y cliente, los botones '
-                  '+ y −, el pago mixto y el '
-                  'resumen de deuda.\n\n'
-                  'Pedidos: crea borradores '
-                  'de encargos.\n\n'
-                  'Ninguno de estos módulos '
-                  'registra operaciones reales '
-                  'en Google Sheets todavía.',
-                ),
-              ),
             ),
           ],
         ),
