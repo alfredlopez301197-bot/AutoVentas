@@ -1,238 +1,51 @@
-import 'dart:async';
-
-import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
-import 'screens/access_restricted_screen.dart';
+// Importaciones de pantallas esenciales
 import 'screens/account_screen.dart';
 import 'screens/auth_screen.dart';
-import 'screens/customer_registration_screen.dart';
+import 'screens/cuadre_screen.dart';
 import 'screens/customer_statement_screen.dart';
-import 'screens/customer_visits_screen.dart';
 import 'screens/customers_screen.dart';
-import 'screens/document_detail_screen.dart';
-import 'screens/due_invoices_screen.dart';
 import 'screens/expenses_screen.dart';
 import 'screens/home_screen.dart';
-import 'screens/issues_screen.dart';
-import 'screens/material_request_screen.dart';
-import 'screens/notifications_screen.dart';
-import 'screens/onboarding_screen.dart';
-import 'screens/payment_entry_screen.dart';
-import 'screens/pending_approvals_screen.dart';
-import 'screens/privacy_policy_screen.dart';
-import 'screens/sales_invoice_screen.dart';
+import 'screens/new_customer_screen.dart';
 import 'screens/sales_order_screen.dart';
 import 'screens/splash_screen.dart';
-import 'screens/stock_movement_screen.dart';
-import 'screens/sync_queue_screen.dart';
-import 'screens/team_dashboard_screen.dart';
-import 'screens/treasury_screen.dart';
-import 'screens/treasury_statement_screen.dart';
-import 'screens/welcome_screen.dart';
-import 'services/auth_service.dart';
-import 'services/sync_engine.dart';
-import 'theme/app_theme.dart';
-import 'widgets/search_picker.dart';
 
 void main() {
-  // Touches the singleton so it starts listening for connectivity and
-  // attempts to drain any jobs left over from a previous session — before
-  // `runApp`, not from inside a widget, so `flutter_test`'s `pumpWidget`
-  // (which never calls this `main`) never touches it.
-  SyncEngine();
-  runApp(const RedErpApp());
+  runApp(const MyApp());
 }
 
-/// Deep-links a tapped push notification straight to its document — same
-/// destination the in-app bell (`notifications_screen.dart`) already uses.
-/// `_router` is a plain top-level singleton, so this works from anywhere
-/// (a background FCM callback included) without needing a `BuildContext`.
-Future<void> openDocumentFromNotification(String doctype, String name) async {
-  if (!await AuthService.hasStoredSession()) {
-    _router.go('/auth');
-    return;
-  }
-  _router.push(documentDetailRoute(doctype, name));
-}
-
-final _router = GoRouter(
-  initialLocation: '/auth',
-  routes: [
-    GoRoute(path: '/', builder: (context, state) => const SplashScreen()),
-    GoRoute(
-      path: '/onboarding',
-      builder: (context, state) => const OnboardingScreen(),
-    ),
-    GoRoute(path: '/auth', builder: (context, state) => const AuthScreen()),
-    GoRoute(
-      path: '/access-restricted',
-      builder: (context, state) =>
-          AccessRestrictedScreen(message: state.extra as String?),
-    ),
-    GoRoute(
-      path: '/welcome',
-      builder: (context, state) => const WelcomeScreen(),
-    ),
-    GoRoute(path: '/home', builder: (context, state) => const HomeScreen()),
-    GoRoute(
-      path: '/notifications',
-      builder: (context, state) => const NotificationsScreen(),
-    ),
-    GoRoute(
-      path: '/account',
-      builder: (context, state) => const AccountScreen(),
-    ),
-    GoRoute(
-      path: '/privacy-policy',
-      builder: (context, state) => const PrivacyPolicyScreen(),
-    ),
-    GoRoute(
-      path: '/sales-order',
-      builder: (context, state) =>
-          const SalesOrderScreen(idCliente: 'CF', nombreCliente: 'Consumidor Final'),
-    ),
-    GoRoute(
-      path: '/sales-invoice',
-      builder: (context, state) =>
-          SalesInvoiceScreen(editDoc: state.extra as Map<String, dynamic>?),
-    ),
-    GoRoute(
-      path: '/payment-entry',
-      builder: (context, state) =>
-          PaymentEntryScreen(presetCustomer: state.extra as PickedRecord?),
-    ),
-    GoRoute(
-      path: '/due-invoices',
-      builder: (context, state) => const DueInvoicesScreen(),
-    ),
-    GoRoute(
-      path: '/material-request',
-      builder: (context, state) => const MaterialRequestScreen(),
-    ),
-    GoRoute(
-      path: '/customers',
-      builder: (context, state) => const CustomersScreen(),
-    ),
-    GoRoute(
-      path: '/expenses',
-      builder: (context, state) => const ExpensesScreen(),
-    ),
-    GoRoute(path: '/issues', builder: (context, state) => const IssuesScreen()),
-    GoRoute(
-      path: '/customer-visits',
-      builder: (context, state) => const CustomerVisitsScreen(),
-    ),
-    GoRoute(
-      path: '/treasury',
-      builder: (context, state) => const TreasuryScreen(),
-    ),
-    GoRoute(
-      path: '/treasury-statement',
-      builder: (context, state) {
-        final extra = state.extra as Map<String, dynamic>;
-        return TreasuryStatementScreen(
-          treasuryName: extra['name'] as String,
-          account: extra['account'] as String,
-        );
-      },
-    ),
-    GoRoute(
-      path: '/customer-registration',
-      builder: (context, state) => CustomerRegistrationScreen(
-        editDoc: state.extra as Map<String, dynamic>?,
-      ),
-    ),
-    GoRoute(
-      path: '/pending-approvals',
-      builder: (context, state) => const PendingApprovalsScreen(),
-    ),
-    GoRoute(
-      path: '/stock-movement',
-      builder: (context, state) => const StockMovementScreen(),
-    ),
-    GoRoute(
-      path: '/team-dashboard',
-      builder: (context, state) => const TeamDashboardScreen(),
-    ),
-    GoRoute(
-      path: '/customer-statement/:customer',
-      builder: (context, state) => CustomerStatementScreen(
-        customer: state.pathParameters['customer']!,
-        customerLabel:
-            state.uri.queryParameters['label'] ??
-            state.pathParameters['customer']!,
-      ),
-    ),
-    GoRoute(
-      path: '/document/:doctype/:name',
-      builder: (context, state) => DocumentDetailScreen(
-        doctype: state.pathParameters['doctype']!,
-        name: state.pathParameters['name']!,
-      ),
-    ),
-    GoRoute(
-      path: '/sync-queue',
-      builder: (context, state) => const SyncQueueScreen(),
-    ),
-  ],
-);
-
-class RedErpApp extends StatefulWidget {
-  const RedErpApp({super.key});
-
-  @override
-  State<RedErpApp> createState() => _RedErpAppState();
-}
-
-class _RedErpAppState extends State<RedErpApp> {
-  late final AppLinks _appLinks;
-  StreamSubscription<Uri>? _linkSubscription;
-
-  @override
-  void initState() {
-    super.initState();
-    _initDeepLinks();
-  }
-
-  void _initDeepLinks() {
-    _appLinks = AppLinks();
-
-    // Listen to incoming deep links
-    _linkSubscription = _appLinks.uriLinkStream.listen((uri) {
-      _handleDeepLink(uri);
-    });
-  }
-
-  void _handleDeepLink(Uri uri) {
-    if (uri.scheme == 'redapp') {
-      final doctype = uri.queryParameters['doctype'];
-      final name = uri.queryParameters['name'];
-      if (doctype != null && name != null) {
-        openDocumentFromNotification(doctype, name);
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _linkSubscription?.cancel();
-    super.dispose();
-  }
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: 'AutoVentas',
+    return MaterialApp(
+      title: 'Panda AutoVentas',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.theme,
-      routerConfig: _router,
-      builder: (context, child) {
-        return Directionality(
-          textDirection: TextDirection.ltr,
-          child: child ?? const SizedBox.shrink(),
-        );
+      theme: ThemeData(
+        primarySwatch: Colors.amber,
+        scaffoldBackgroundColor: Colors.grey[100],
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFFD4AF37),
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+      ),
+      // Ruta inicial de la aplicación
+      initialRoute: '/',
+      routes: {
+        '/': (context) => const SplashScreen(),
+        '/auth': (context) => const AuthScreen(),
+        '/home': (context) => const HomeScreen(),
+        '/customers': (context) => const CustomersScreen(),
+        '/new_customer': (context) => const NewCustomerScreen(),
+        '/statement': (context) => const CustomerStatementScreen(customer: '', customerLabel: ''),
+        '/sales': (context) => const SalesOrderScreen(idCliente: '', nombreCliente: ''),
+        '/expenses': (context) => const ExpensesScreen(),
+        '/cuadre': (context) => const CuadreScreen(),
+        '/account': (context) => const AccountScreen(),
       },
     );
   }
