@@ -26,7 +26,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
   // Mapa para guardar las cantidades del carrito (ID_Producto -> Cantidad)
   final Map<String, int> _carrito = {};
   bool _guardando = false;
-  String _tipoPago = 'Contado'; // Opciones: Contado o Credito
+  String _tipoPago = 'Contado'; 
 
   @override
   void initState() {
@@ -110,7 +110,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
           'idCliente': widget.idCliente,
           'tipoPago': _tipoPago,
           'subtotal': _totalVenta,
-          'descuento': 0, // Puedes agregar un campo de descuento luego
+          'descuento': 0,
           'total': _totalVenta,
           'items': items,
         },
@@ -118,7 +118,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('¡Venta registrada con éxito!'), backgroundColor: Colors.green));
-      Navigator.pop(context); // Regresa a clientes
+      Navigator.pop(context); // Regresa a la lista de clientes
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
@@ -137,7 +137,6 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
               ? Center(child: Text(_error!, style: const TextStyle(color: Colors.red)))
               : Column(
                   children: [
-                    // Tipo de Pago
                     Container(
                       color: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -158,7 +157,6 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
                       ),
                     ),
                     const Divider(height: 1),
-                    // Lista de Productos
                     Expanded(
                       child: ListView.builder(
                         itemCount: _productos.length,
