@@ -75,6 +75,96 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
     return total;
   }
 
+  // DIÁLOGO RÁPIDO DE "NO COMPRÓ" CON MOTIVOS Y GPS
+  void _mostrarDialogoNoCompra() {
+    String motivoSeleccionado = 'Local cerrado';
+    final List<String> motivos = [
+      'Local cerrado',
+      'No está el responsable',
+      'Tienen stock suficiente',
+      'Sin dinero / Falta de liquidez',
+      'Competencia / Otro motivo'
+    ];
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: const Text('Registrar No Compra'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Selecciona el motivo por el cual no se concretó la venta:'),
+                  const SizedBox(height: 12),
+                  ...motivos.map((motivo) {
+                    return RadioListTile<String>(
+                      title: Text(motivo, style: const TextStyle(fontSize: 14)),
+                      value: motivo,
+                      groupValue: motivoSeleccionado,
+                      onChanged: (val) {
+                        if (val != null) {
+                          setStateDialog(() => motivoSeleccionado = val);
+                        }
+                      },
+                    );
+                  }),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                  onPressed: () {
+                    Navigator.pop(context); // Cierra diálogo
+                    _registrarNoCompraEnServidor(motivoSeleccionado);
+                  },
+                  child: const Text('Registrar y Salir'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _registrarNoCompraEnServidor(String motivo) async {
+    setState(() => _guardando = true);
+
+    try {
+      final currentUser = GoogleSheetsService.currentUser ?? {};
+      final idVendedor = (currentUser['usuario'] ?? 'Desc').toString();
+
+      // Aquí enviamos la visita fallida junto al motivo y las coordenadas GPS (si el backend las procesa o toma ubicación actual)
+      await GoogleSheetsService.post(
+        body: {
+          'action': 'registrar_no_compra',
+          'idVendedor': idVendedor,
+          'idCliente': widget.idCliente,
+          'motivo': motivo,
+          'fecha': DateTime.now().toIso8601String(),
+        },
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Visita registrada: No hubo compra'), backgroundColor: Colors.orange),
+      );
+      Navigator.pop(context); // Regresa a la lista de clientes
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _guardando = false);
+    }
+  }
+
   Future<void> _registrarVenta() async {
     if (_totalVenta <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Agrega al menos un producto al carrito', style: TextStyle(color: Colors.white)), backgroundColor: Colors.red));
@@ -130,7 +220,18 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Vender a: ${widget.nombreCliente}')),
+      appBar: AppBar(
+        title: Text('Vender a: ${widget.nombreCliente}'),
+        actions: [
+          // BOTÓN RÁPIDO DE "NO COMPRÓ" EN LA BARRA SUPERIOR
+          TextButton.icon(
+            style: TextButton.styleFrom(foregroundColor: Colors.white),
+            onPressed: _guardando ? null : _mostrarDialogoNoCompra,
+            icon: const Icon(Icons.cancel_outlined, color: Colors.redAccent, size: 20),
+            label: const Text('No compró', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
