@@ -17,7 +17,7 @@ class _NewCustomerScreenState extends State<NewCustomerScreen> {
   final TextEditingController _direccionController = TextEditingController();
   final TextEditingController _limiteCreditoController = TextEditingController(text: '0.00');
 
-  String _rutaSeleccionada = 'Ruta Norte'; // Valor por defecto o el de tu ruta actual
+  String _rutaSeleccionada = 'Ruta Norte';
   String _diaVisitaSeleccionado = 'Lunes';
   
   bool _guardando = false;
@@ -43,11 +43,8 @@ class _NewCustomerScreenState extends State<NewCustomerScreen> {
     try {
       final currentUser = GoogleSheetsService.currentUser ?? {};
       final idVendedor = (currentUser['usuario'] ?? 'Desc').toString();
-
-      // Generamos un ID de cliente basado en milisegundos o texto
       final idCliente = 'C${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
 
-      // Estructura de datos que se enviará al Apps Script de Google Sheets
       await GoogleSheetsService.post(
         body: {
           'action': 'registrar_cliente',
@@ -61,7 +58,7 @@ class _NewCustomerScreenState extends State<NewCustomerScreen> {
           'limiteCredito': double.tryParse(_limiteCreditoController.text.trim()) ?? 0.0,
           'deudaActual': 0.0,
           'diaVisita': _diaVisitaSeleccionado,
-          'latitud': 0.0, // Puedes integrar geolocator aquí si lo requieres
+          'latitud': 0.0,
           'longitud': 0.0,
         },
       );
@@ -71,7 +68,6 @@ class _NewCustomerScreenState extends State<NewCustomerScreen> {
         const SnackBar(content: Text('¡Cliente creado y guardado con éxito!'), backgroundColor: Colors.green),
       );
       
-      // Retorna 'true' para indicar que se creó con éxito y recargar la lista anterior
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
@@ -136,15 +132,19 @@ class _NewCustomerScreenState extends State<NewCustomerScreen> {
             ),
             const SizedBox(height: 32),
             SizedBox(
+              width: double.infinity,
               height: 50,
-              child: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFD4AF37),
-                foregroundColor: Colors.white,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFD4AF37),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: _guardando ? null : _guardarCliente,
+                child: _guardando
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Text('Guardar Cliente', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ),
-              onPressed: _guardando ? null : _guardarCliente,
-              child: _guardando
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text('Guardar Cliente', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
           ],
         ),
