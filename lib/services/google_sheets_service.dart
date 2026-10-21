@@ -8,14 +8,20 @@ class GoogleSheetsService {
       'https://script.google.com/macros/s/'
       'AKfycbz6Dhi_ysLgfc6O1renR2FiIoinWJ6QyuM3n_t3vzuPE7HK1mnnb1P4V3N4q8Z-L1-v/exec';
 
-  static const Duration _timeout = Duration(seconds: 20);
+  // SOLO PARA PRUEBAS PRIVADAS.
+  // Pega aquí el token de prueba en tu editor.
+  // No compartas el token ni publiques esta versión.
+  static const String _apiToken =
+      'fbd37c5b-80b1-401b-bbc9-d40548a3c6a9-4008d40c-ce4b-44cc-855b-747ef99d2692';
 
-  /// Comprueba si la API AutoVentas está disponible.
+  static const Duration _timeout =
+      Duration(seconds: 20);
+
   static Future<bool> ping() async {
     try {
-      final response = await http.get(
-        Uri.parse(apiUrl),
-      ).timeout(_timeout);
+      final response = await http
+          .get(Uri.parse(apiUrl))
+          .timeout(_timeout);
 
       if (response.statusCode != 200) {
         return false;
@@ -31,24 +37,30 @@ class GoogleSheetsService {
     }
   }
 
-  /// Envía una solicitud JSON a Google Apps Script.
-  ///
-  /// El servidor debe autenticar cada solicitud.
-  /// No se debe incluir un token secreto fijo en
-  /// el código público de Flutter.
-  ///
-  /// Las operaciones de ventas y cobros requieren
-  /// identificadores únicos para evitar duplicados.
   static Future<Map<String, dynamic>> post({
     required Map<String, dynamic> body,
   }) async {
-    final response = await http.post(
-      Uri.parse(apiUrl),
-      headers: const {
-        'Content-Type': 'text/plain; charset=utf-8',
-      },
-      body: jsonEncode(body),
-    ).timeout(_timeout);
+    if (_apiToken.isEmpty ||
+        _apiToken == 'PEGA_AQUI_TU_TOKEN_DE_PRUEBA') {
+      throw Exception(
+        'Falta configurar el token de prueba.',
+      );
+    }
+
+    final payload = <String, dynamic>{
+      ...body,
+      'token': _apiToken,
+    };
+
+    final response = await http
+        .post(
+          Uri.parse(apiUrl),
+          headers: const {
+            'Content-Type': 'text/plain; charset=utf-8',
+          },
+          body: jsonEncode(payload),
+        )
+        .timeout(_timeout);
 
     if (response.statusCode != 200) {
       throw Exception(
@@ -64,7 +76,8 @@ class GoogleSheetsService {
       );
     }
 
-    final result = Map<String, dynamic>.from(decoded);
+    final result =
+        Map<String, dynamic>.from(decoded);
 
     if (result['status'] != 'ok') {
       throw Exception(
@@ -74,5 +87,40 @@ class GoogleSheetsService {
     }
 
     return result;
+  }
+
+  static Future<List<Map<String, dynamic>>>
+      getProductos() async {
+    final result = await post(
+      body: {'action': 'productos'},
+    );
+
+    return _toMapList(result['data']);
+  }
+
+  static Future<List<Map<String, dynamic>>>
+      getClientes() async {
+    final result = await post(
+      body: {'action': 'clientes'},
+    );
+
+    return _toMapList(result['data']);
+  }
+
+  static List<Map<String, dynamic>> _toMapList(
+    dynamic value,
+  ) {
+    if (value is! List) {
+      throw const FormatException(
+        'La API no devolvió una lista válida.',
+      );
+    }
+
+    return value
+        .whereType<Map>()
+        .map(
+          (item) => Map<String, dynamic>.from(item),
+        )
+        .toList();
   }
 }
