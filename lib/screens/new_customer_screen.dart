@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import '../services/google_sheets_service.dart';
 
 class NewCustomerScreen extends StatefulWidget {
@@ -10,180 +9,144 @@ class NewCustomerScreen extends StatefulWidget {
 }
 
 class _NewCustomerScreenState extends State<NewCustomerScreen> {
-  final _tiendaController = TextEditingController();
-  final _propietarioController = TextEditingController();
-  final _telefonoController = TextEditingController();
-  final _direccionController = TextEditingController();
-  final _limiteController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
   
-  String _diaVisita = 'Lunes';
-  final List<String> _dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+  final TextEditingController _nombreTiendaController = TextEditingController();
+  final TextEditingController _propietarioController = TextEditingController();
+  final TextEditingController _telefonoController = TextEditingController();
+  final TextEditingController _direccionController = TextEditingController();
+  final TextEditingController _limiteCreditoController = TextEditingController(text: '0.00');
+
+  String _rutaSeleccionada = 'Ruta Norte'; // Valor por defecto o el de tu ruta actual
+  String _diaVisitaSeleccionado = 'Lunes';
   
-  bool _isLoading = false;
-  String _loadingMessage = '';
+  bool _guardando = false;
 
-  Future<Position?> _obtenerUbicacion() async {
-    bool serviceEnabled;
-    LocationPermission permission;
+  final List<String> _rutasDisponibles = ['Ruta Norte', 'Ruta Sur', 'Ruta Centro'];
+  final List<String> _diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      throw Exception('El GPS está desactivado. Por favor, enciéndelo.');
-    }
-
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        throw Exception('Permiso de ubicación denegado.');
-      }
-    }
-    
-    if (permission == LocationPermission.deniedForever) {
-      throw Exception('Los permisos de ubicación están bloqueados permanentemente.');
-    } 
-
-    return await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+  @override
+  void dispose() {
+    _nombreTiendaController.dispose();
+    _propietarioController.dispose();
+    _telefonoController.dispose();
+    _direccionController.dispose();
+    _limiteCreditoController.dispose();
+    super.dispose();
   }
 
   Future<void> _guardarCliente() async {
-    final tienda = _tiendaController.text.trim();
-    final propietario = _propietarioController.text.trim();
-    final telefono = _telefonoController.text.trim();
-    final direccion = _direccionController.text.trim();
-    final limite = _limiteController.text.trim();
+    if (!_formKey.currentState!.validate()) return;
 
-    if (tienda.isEmpty || propietario.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('La tienda y el propietario son obligatorios'), backgroundColor: Colors.red),
-      );
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _loadingMessage = 'Obteniendo coordenadas GPS...';
-    });
+    setState(() => _guardando = true);
 
     try {
-      // 1. Capturar ubicación exacta
-      final position = await _obtenerUbicacion();
-      
-      setState(() {
-        _loadingMessage = 'Guardando en la base de datos...';
-      });
-
-      // 2. Preparar datos de sesión
       final currentUser = GoogleSheetsService.currentUser ?? {};
-      final String miRol = (currentUser['rol'] ?? '').toString().toLowerCase();
-      String rutaAsignada = (currentUser['ruta'] ?? '').toString();
+      final idVendedor = (currentUser['usuario'] ?? 'Desc').toString();
 
-      if (miRol == 'jefe' || miRol == 'administrador' || rutaAsignada == 'Todas') {
-        rutaAsignada = 'General'; 
-      }
+      // Generamos un ID de cliente basado en milisegundos o texto
+      final idCliente = 'C${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
 
-      // 3. Enviar todo a Google Sheets
+      // Estructura de datos que se enviará al Apps Script de Google Sheets
       await GoogleSheetsService.post(
         body: {
-          'action': 'guardar_cliente',
-          'nombreTienda': tienda,
-          'propietario': propietario,
-          'telefono': telefono,
-          'direccion': direccion,
-          'ruta': rutaAsignada,
-          'limiteCredito': limite.isEmpty ? 0 : num.tryParse(limite) ?? 0,
-          'diaVisita': _diaVisita,
-          'latitud': position?.latitude ?? '',
-          'longitud': position?.longitude ?? '',
+          'action': 'registrar_cliente',
+          'idVendedor': idVendedor,
+          'idCliente': idCliente,
+          'nombreTienda': _nombreTiendaController.text.trim(),
+          'propietario': _propietarioController.text.trim(),
+          'telefono': _telefonoController.text.trim(),
+          'direccion': _direccionController.text.trim(),
+          'ruta': _rutaSeleccionada,
+          'limiteCredito': double.tryParse(_limiteCreditoController.text.trim()) ?? 0.0,
+          'deudaActual': 0.0,
+          'diaVisita': _diaVisitaSeleccionado,
+          'latitud': 0.0, // Puedes integrar geolocator aquí si lo requieres
+          'longitud': 0.0,
         },
       );
 
       if (!mounted) return;
-      
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cliente guardado con GPS exitosamente'), backgroundColor: Colors.green),
+        const SnackBar(content: Text('¡Cliente creado y guardado con éxito!'), backgroundColor: Colors.green),
       );
       
-      Navigator.pop(context, true); 
+      // Retorna 'true' para indicar que se creó con éxito y recargar la lista anterior
+      Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${e.toString()}'), backgroundColor: Colors.red),
+        SnackBar(content: Text('Error al guardar cliente: $e'), backgroundColor: Colors.red),
       );
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _guardando = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Nuevo Cliente')),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              TextField(
-                controller: _tiendaController,
-                enabled: !_isLoading,
-                decoration: const InputDecoration(labelText: 'Nombre de la Tienda *', border: OutlineInputBorder()),
+      appBar: AppBar(title: const Text('Registrar Nuevo Cliente')),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            TextFormField(
+              controller: _nombreTiendaController,
+              decoration: const InputDecoration(labelText: 'Nombre de la Tienda', border: OutlineInputBorder()),
+              validator: (val) => val == null || val.isEmpty ? 'Ingresa el nombre de la tienda' : null,
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _propietarioController,
+              decoration: const InputDecoration(labelText: 'Nombre del Propietario', border: OutlineInputBorder()),
+              validator: (val) => val == null || val.isEmpty ? 'Ingresa el propietario' : null,
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _telefonoController,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(labelText: 'Teléfono', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _direccionController,
+              decoration: const InputDecoration(labelText: 'Dirección', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _rutaSeleccionada,
+              decoration: const InputDecoration(labelText: 'Ruta', border: OutlineInputBorder()),
+              items: _rutasDisponibles.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
+              onChanged: (val) => setState(() => _rutaSeleccionada = val ?? _rutaSeleccionada),
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _diaVisitaSeleccionado,
+              decoration: const InputDecoration(labelText: 'Día de Visita', border: OutlineInputBorder()),
+              items: _diasSemana.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
+              onChanged: (val) => setState(() => _diaVisitaSeleccionado = val ?? _diaVisitaSeleccionado),
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _limiteCreditoController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Límite de Crédito (\$)', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 32),
+            SizedBox(
+              height: 50,
+              child: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFD4AF37),
+                foregroundColor: Colors.white,
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _propietarioController,
-                enabled: !_isLoading,
-                decoration: const InputDecoration(labelText: 'Nombre del Propietario *', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _telefonoController,
-                enabled: !_isLoading,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(labelText: 'Teléfono', border: OutlineInputBorder(), prefixIcon: Icon(Icons.phone)),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _direccionController,
-                enabled: !_isLoading,
-                keyboardType: TextInputType.streetAddress,
-                decoration: const InputDecoration(labelText: 'Dirección Exacta', border: OutlineInputBorder(), prefixIcon: Icon(Icons.location_on)),
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: _diaVisita,
-                decoration: const InputDecoration(labelText: 'Día de Visita Asignado', border: OutlineInputBorder(), prefixIcon: Icon(Icons.calendar_today)),
-                items: _dias.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
-                onChanged: _isLoading ? null : (val) => setState(() => _diaVisita = val!),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _limiteController,
-                enabled: !_isLoading,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Límite de Crédito (\$) (Opcional)', border: OutlineInputBorder(), prefixIcon: Icon(Icons.attach_money)),
-              ),
-              const SizedBox(height: 30),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _guardarCliente,
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD4AF37), foregroundColor: Colors.white),
-                  child: _isLoading
-                      ? Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
-                            const SizedBox(width: 15),
-                            Text(_loadingMessage, style: const TextStyle(fontSize: 16)),
-                          ],
-                        )
-                      : const Text('Guardar Cliente', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                ),
-              ),
-            ],
-          ),
+              onPressed: _guardando ? null : _guardarCliente,
+              child: _guardando
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text('Guardar Cliente', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+          ],
         ),
       ),
     );
