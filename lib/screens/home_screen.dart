@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../services/google_sheets_service.dart';
+import 'sales_invoice_screen.dart';
 import 'sales_order_screen.dart';
 
 /// Pantalla principal de AutoVentas.
-/// Los módulos pendientes no escriben en ERPNext ni en Google Sheets.
+/// Ventas y Pedidos están habilitados en modo de prueba.
+/// Los módulos pendientes no registran datos reales.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -19,18 +21,66 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _connected = false;
 
   static const _modules = <_HomeModule>[
-    _HomeModule('Ventas', Icons.point_of_sale_rounded, 'Contado y crédito'),
-    _HomeModule('Pedidos', Icons.shopping_cart_rounded, 'Pedidos de clientes'),
-    _HomeModule('Deudas', Icons.request_quote_rounded, 'Saldos pendientes'),
-    _HomeModule('Cobros', Icons.payments_rounded, 'Abonos y pagos'),
-    _HomeModule('Clientes', Icons.groups_rounded, 'Directorio de clientes'),
-    _HomeModule('Inventario', Icons.inventory_2_rounded, 'Existencias y movimientos'),
-    _HomeModule('Rutas', Icons.route_rounded, 'Visitas y recorridos'),
-    _HomeModule('Gastos', Icons.receipt_long_rounded, 'Gastos del día'),
-    _HomeModule('Consumo', Icons.production_quantity_limits_rounded, 'Consumo de productos'),
-    _HomeModule('Kilometraje', Icons.speed_rounded, 'Km inicial y final'),
-    _HomeModule('Cuadre de caja', Icons.account_balance_wallet_rounded, 'Cierre diario'),
-    _HomeModule('Reportes', Icons.bar_chart_rounded, 'Resumen de operaciones'),
+    _HomeModule(
+      'Ventas',
+      Icons.point_of_sale_rounded,
+      'Autoventa rápida',
+    ),
+    _HomeModule(
+      'Pedidos',
+      Icons.shopping_cart_rounded,
+      'Encargos de clientes',
+    ),
+    _HomeModule(
+      'Deudas',
+      Icons.request_quote_rounded,
+      'Saldos pendientes',
+    ),
+    _HomeModule(
+      'Cobros',
+      Icons.payments_rounded,
+      'Abonos y pagos',
+    ),
+    _HomeModule(
+      'Clientes',
+      Icons.groups_rounded,
+      'Directorio de clientes',
+    ),
+    _HomeModule(
+      'Inventario',
+      Icons.inventory_2_rounded,
+      'Existencias y movimientos',
+    ),
+    _HomeModule(
+      'Rutas',
+      Icons.route_rounded,
+      'Visitas y recorridos',
+    ),
+    _HomeModule(
+      'Gastos',
+      Icons.receipt_long_rounded,
+      'Gastos del día',
+    ),
+    _HomeModule(
+      'Consumo',
+      Icons.production_quantity_limits_rounded,
+      'Consumo de productos',
+    ),
+    _HomeModule(
+      'Kilometraje',
+      Icons.speed_rounded,
+      'Km inicial y final',
+    ),
+    _HomeModule(
+      'Cuadre de caja',
+      Icons.account_balance_wallet_rounded,
+      'Cierre diario',
+    ),
+    _HomeModule(
+      'Reportes',
+      Icons.bar_chart_rounded,
+      'Resumen de operaciones',
+    ),
   ];
 
   @override
@@ -58,7 +108,8 @@ class _HomeScreenState extends State<HomeScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          '$module: pendiente de conectar con Google Sheets.',
+          '$module: pendiente de conectar '
+          'con Google Sheets.',
         ),
         duration: const Duration(seconds: 3),
       ),
@@ -66,12 +117,21 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openModule(_HomeModule module) {
-    if (module.title == 'Pedidos') {
-      // Navegación directa a la pantalla de borradores.
-      // No requiere autenticación ni escribe datos reales.
+    if (module.title == 'Ventas') {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (context) => const SalesOrderScreen(),
+          builder: (context) =>
+              const SalesInvoiceScreen(),
+        ),
+      );
+      return;
+    }
+
+    if (module.title == 'Pedidos') {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (context) =>
+              const SalesOrderScreen(),
         ),
       );
       return;
@@ -90,13 +150,16 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           IconButton(
             tooltip: 'Actualizar conexión',
-            onPressed: _checking ? null : _checkConnection,
+            onPressed:
+                _checking ? null : _checkConnection,
             icon: const Icon(Icons.refresh_rounded),
           ),
           IconButton(
             tooltip: 'Mi cuenta',
             onPressed: () => context.push('/account'),
-            icon: const Icon(Icons.account_circle_outlined),
+            icon: const Icon(
+              Icons.account_circle_outlined,
+            ),
           ),
         ],
       ),
@@ -109,15 +172,18 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(18),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Bienvenido a AutoVentas',
-                      style: theme.textTheme.titleLarge,
+                      style:
+                          theme.textTheme.titleLarge,
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Ventas, clientes, rutas e inventario en un solo lugar.',
+                      'Ventas, clientes, rutas '
+                      'e inventario en un solo lugar.',
                     ),
                     const SizedBox(height: 14),
                     Row(
@@ -126,7 +192,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           const SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(
+                            child:
+                                CircularProgressIndicator(
                               strokeWidth: 2,
                             ),
                           )
@@ -145,8 +212,10 @@ class _HomeScreenState extends State<HomeScreen> {
                             _checking
                                 ? 'Comprobando conexión…'
                                 : _connected
-                                    ? 'Google Sheets disponible (prueba de conexión)'
-                                    : 'Sin conexión confirmada con Google Sheets',
+                                    ? 'Google Sheets disponible '
+                                      '(prueba de conexión)'
+                                    : 'Sin conexión confirmada '
+                                      'con Google Sheets',
                           ),
                         ),
                       ],
@@ -162,14 +231,18 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 6),
             const Text(
-              'Estamos migrando cada módulo. '
-              'Los pendientes aún no registran datos.',
+              'Ventas y Pedidos están disponibles '
+              'en modo de prueba. '
+              'Los demás módulos se activarán '
+              'progresivamente.',
             ),
             const SizedBox(height: 14),
             LayoutBuilder(
               builder: (context, constraints) {
                 final columns =
-                    constraints.maxWidth >= 600 ? 4 : 2;
+                    constraints.maxWidth >= 600
+                        ? 4
+                        : 2;
 
                 return GridView.builder(
                   shrinkWrap: true,
@@ -189,9 +262,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     return Card(
                       clipBehavior: Clip.antiAlias,
                       child: InkWell(
-                        onTap: () => _openModule(module),
+                        onTap: () =>
+                            _openModule(module),
                         child: Padding(
-                          padding: const EdgeInsets.all(10),
+                          padding:
+                              const EdgeInsets.all(10),
                           child: Column(
                             mainAxisAlignment:
                                 MainAxisAlignment.center,
@@ -199,29 +274,32 @@ class _HomeScreenState extends State<HomeScreen> {
                               Icon(
                                 module.icon,
                                 size: 30,
-                                color:
-                                    theme.colorScheme.primary,
+                                color: theme
+                                    .colorScheme.primary,
                               ),
                               const SizedBox(height: 8),
                               Text(
                                 module.title,
-                                textAlign: TextAlign.center,
+                                textAlign:
+                                    TextAlign.center,
                                 maxLines: 1,
                                 overflow:
                                     TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
+                                  fontWeight:
+                                      FontWeight.bold,
                                 ),
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 module.subtitle,
-                                textAlign: TextAlign.center,
+                                textAlign:
+                                    TextAlign.center,
                                 maxLines: 2,
                                 overflow:
                                     TextOverflow.ellipsis,
-                                style:
-                                    theme.textTheme.bodySmall,
+                                style: theme
+                                    .textTheme.bodySmall,
                               ),
                             ],
                           ),
@@ -237,12 +315,15 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Padding(
                 padding: EdgeInsets.all(16),
                 child: Text(
-                  'Pedidos está habilitado para crear '
-                  'borradores de prueba. '
-                  'Los demás módulos se activarán '
-                  'progresivamente. '
-                  'La conexión disponible no significa '
-                  'que ya se registren operaciones reales.',
+                  'Ventas: prueba la selección '
+                  'de ruta y cliente, los botones '
+                  '+ y −, el pago mixto y el '
+                  'resumen de deuda.\n\n'
+                  'Pedidos: crea borradores '
+                  'de encargos.\n\n'
+                  'Ninguno de estos módulos '
+                  'registra operaciones reales '
+                  'en Google Sheets todavía.',
                 ),
               ),
             ),
