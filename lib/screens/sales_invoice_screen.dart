@@ -25,31 +25,33 @@ class _Product {
 
 class _SaleDraft {
   const _SaleDraft({
+    required this.operation,
     required this.route,
     required this.customer,
     required this.items,
-    required this.saleTotal,
+    required this.total,
     required this.previousDebt,
     required this.cash,
     required this.transfer,
-    required this.credit,
-    required this.debtPayment,
     required this.notes,
   });
 
+  final String operation;
   final String route;
   final String customer;
   final Map<String, int> items;
-  final double saleTotal;
+  final double total;
   final double previousDebt;
   final double cash;
   final double transfer;
-  final double credit;
-  final double debtPayment;
   final String notes;
 
+  double get received => cash + transfer;
+
   double get remainingDebt =>
-      previousDebt + saleTotal - cash - transfer;
+      (previousDebt + total - received)
+          .clamp(0.0, double.infinity)
+          .toDouble();
 }
 
 class _SalesInvoiceScreenState
@@ -63,8 +65,8 @@ class _SalesInvoiceScreenState
     'Sábado',
   ];
 
-  // DATOS FICTICIOS PARA PROBAR LA INTERFAZ.
-  // Más adelante vendrán de Google Sheets.
+  // DATOS FICTICIOS PARA PRUEBAS.
+  // Después se sustituirán por los datos reales.
   static const Map<String, List<String>> _clients = {
     'Lunes': [
       'Tienda María',
@@ -101,7 +103,7 @@ class _SalesInvoiceScreenState
     _Product('Producto F', 5.00),
   ];
 
-  // Deudas de ejemplo, no saldos reales.
+  // Saldos ficticios: NO son deudas reales.
   static const Map<String, double> _demoDebts = {
     'Tienda María': 30,
     'Comercial López': 15,
@@ -118,7 +120,7 @@ class _SalesInvoiceScreenState
 
   String _route = 'Lunes';
   String? _customer;
-  String _saleType = 'Contado';
+  String _operation = 'Venta de contado';
   String _search = '';
 
   bool _checking = true;
@@ -140,16 +142,27 @@ class _SalesInvoiceScreenState
   }
 
   Future<void> _checkConnection() async {
-    setState(() => _checking = true);
+    if (mounted) {
+      setState(() => _checking = true);
+    }
 
-    final connected = await GoogleSheetsService.ping();
+    try {
+      final connected = await GoogleSheetsService.ping();
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    setState(() {
-      _connected = connected;
-      _checking = false;
-    });
+      setState(() {
+        _connected = connected;
+        _checking = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _connected = false;
+        _checking = false;
+      });
+    }
   }
 
   double _amount(String text) {
@@ -180,39 +193,12 @@ class _SalesInvoiceScreenState
 
   double get _received => _cash + _transfer;
 
-  double get _newSalePaid {
-    if (_saleType == 'Crédito') return 0;
+  double get _totalDue => _previousDebt + _saleTotal;
 
-    return _received < _saleTotal
-        ? _received
-        : _saleTotal;
-  }
-
-  double get _debtPayment {
-    if (_saleType == 'Crédito') {
-      return _received;
-    }
-
-    final excess = _received - _saleTotal;
-    return excess > 0 ? excess : 0;
-  }
-
-  double get _newCredit {
-    if (_saleType == 'Crédito') {
-      return _saleTotal;
-    }
-
-    final pending = _saleTotal - _newSalePaid;
-    return pending > 0 ? pending : 0;
-  }
-
-  double get _remainingDebt {
-    final result = _previousDebt +
-        _saleTotal -
-        _received;
-
-    return result > 0 ? result : 0;
-  }
+  double get _remainingDebt =>
+      (_totalDue - _received)
+          .clamp(0.0, double.infinity)
+          .toDouble();
 
   void _changeQuantity(String name, int change) {
     setState(() {
@@ -233,16 +219,28 @@ class _SalesInvoiceScreenState
     );
   }
 
+  void _resetPayment() {
+    _cashController.text = '0';
+    _transferController.text = '0';
+  }
+
+  void _changeOperation(String? value) {
+    if (value == null) return;
+
+    setState(() {
+      _operation = value;
+
+      if (value == 'Abono de deuda') {
+        _quantities.clear();
+      } else if (value == 'Venta de contado') {
+        _resetPayment();
+      }
+    });
+  }
+
   void _saveDraft() {
     if (_customer == null) {
-      _message('Selecciona un cliente.');
-      return;
-    }
-
-    if (_quantities.isEmpty && _received <= 0) {
-      _message(
-        'Agrega productos o registra un cobro.',
-      );
+      _message('Selecciona la ruta y el cliente.');
       return;
     }
 
@@ -251,58 +249,73 @@ class _SalesInvoiceScreenState
       return;
     }
 
-    if (_saleType == 'Contado' &&
-        _saleTotal > 0 &&
-        _received < _saleTotal) {
-      _message(
-        'Para contado, el pago debe cubrir '
-        'la venta. Usa Crédito si queda saldo.',
-      );
-      return;
-    }
+    if (_operation == 'Abono de deuda') {
+      if (_received <= 0) {
+        _message('Ingresa el importe del abono.');
+        return;
+      }
 
-    if (_received >
-        _previousDebt + _saleTotal + 0.001) {
-      _message(
-        'El pago supera la venta más '
-        'la deuda anterior.',
-      );
-      return;
+      if (_received > _previousDebt) {
+        _message(
+          'El abono supera la deuda anterior '
+          'de prueba.',
+        );
+        return;
+      }
+    } else {
+      if (_quantities.isEmpty) {
+        _message('Agrega al menos un producto.');
+        return;
+      }
+
+      if (_operation == 'Venta de contado' &&
+          _received < _saleTotal) {
+        _message(
+          'El pago debe cubrir el total de la venta. '
+          'Selecciona venta a crédito si queda saldo.',
+        );
+        return;
+      }
+
+      if (_received > _totalDue + 0.001) {
+        _message(
+          'El pago supera la venta más la deuda '
+          'anterior de prueba.',
+        );
+        return;
+      }
     }
 
     final draft = _SaleDraft(
+      operation: _operation,
       route: _route,
       customer: _customer!,
       items: Map<String, int>.from(_quantities),
-      saleTotal: _saleTotal,
+      total: _saleTotal,
       previousDebt: _previousDebt,
       cash: _cash,
       transfer: _transfer,
-      credit: _newCredit,
-      debtPayment: _debtPayment,
       notes: _notesController.text.trim(),
     );
 
     setState(() {
       _drafts.insert(0, draft);
       _quantities.clear();
-      _cashController.text = '0';
-      _transferController.text = '0';
+      _resetPayment();
       _notesController.clear();
-      _saleType = 'Contado';
+      _operation = 'Venta de contado';
     });
 
     _message(
-      'Borrador de prueba guardado solo '
-      'en esta pantalla. No se envió '
-      'a Google Sheets.',
+      'Borrador guardado en esta sesión. '
+      'No se envió a Google Sheets.',
     );
   }
 
   Widget _sectionTitle(String text) {
     return Padding(
       padding: const EdgeInsets.only(
-        top: 16,
+        top: 18,
         bottom: 10,
       ),
       child: Text(
@@ -321,19 +334,16 @@ class _SalesInvoiceScreenState
     bool bold = false,
   }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        vertical: 5,
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         children: [
           Expanded(child: Text(label)),
           Text(
             '\$${value.toStringAsFixed(2)}',
             style: TextStyle(
-              fontWeight: bold
-                  ? FontWeight.bold
-                  : FontWeight.normal,
-              fontSize: bold ? 18 : 14,
+              fontWeight:
+                  bold ? FontWeight.bold : FontWeight.normal,
+              fontSize: bold ? 17 : 14,
             ),
           ),
         ],
@@ -352,6 +362,8 @@ class _SalesInvoiceScreenState
           .contains(_search.toLowerCase()),
     );
 
+    final isDebtPayment = _operation == 'Abono de deuda';
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Autoventa rápida'),
@@ -360,37 +372,37 @@ class _SalesInvoiceScreenState
             tooltip: 'Comprobar conexión',
             onPressed:
                 _checking ? null : _checkConnection,
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh_rounded),
           ),
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(
-          16, 12, 16, 32,
-        ),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 36),
         children: [
           Card(
             child: ListTile(
               leading: Icon(
-                _connected
-                    ? Icons.cloud_done
-                    : Icons.cloud_off,
-                color: _connected
-                    ? Colors.green
-                    : Colors.orange,
+                _checking
+                    ? Icons.cloud_sync_rounded
+                    : _connected
+                        ? Icons.cloud_done_rounded
+                        : Icons.cloud_off_rounded,
+                color: _checking
+                    ? Colors.blueGrey
+                    : _connected
+                        ? Colors.green
+                        : Colors.orange,
               ),
               title: Text(
                 _checking
-                    ? 'Comprobando API...'
+                    ? 'Comprobando conexión…'
                     : _connected
-                        ? 'Google Sheets disponible'
-                        : 'Sin conexión confirmada',
+                        ? 'Google Sheets responde'
+                        : 'Conexión no confirmada',
               ),
               subtitle: const Text(
-                'Modo de prueba: clientes, '
-                'productos, precios y deudas '
-                'son ficticios. No se guardan '
-                'ventas reales.',
+                'Modo de prueba. No se registran '
+                'ventas, cobros ni facturas reales.',
               ),
             ),
           ),
@@ -401,7 +413,7 @@ class _SalesInvoiceScreenState
             value: _route,
             isExpanded: true,
             decoration: const InputDecoration(
-              labelText: 'Ruta o día',
+              labelText: 'Ruta o día de visita',
               border: OutlineInputBorder(),
             ),
             items: [
@@ -418,8 +430,7 @@ class _SalesInvoiceScreenState
                 _route = value;
                 _customer = null;
                 _quantities.clear();
-                _cashController.text = '0';
-                _transferController.text = '0';
+                _resetPayment();
               });
             },
           ),
@@ -434,7 +445,7 @@ class _SalesInvoiceScreenState
               labelText: 'Cliente de la ruta',
               border: OutlineInputBorder(),
             ),
-            hint: const Text('Seleccionar tienda'),
+            hint: const Text('Seleccionar cliente'),
             items: [
               for (final client in availableClients)
                 DropdownMenuItem(
@@ -449,157 +460,174 @@ class _SalesInvoiceScreenState
               setState(() {
                 _customer = value;
                 _quantities.clear();
-                _cashController.text = '0';
-                _transferController.text = '0';
+                _resetPayment();
               });
             },
           ),
 
-          if (_customer != null)
+          if (_customer != null) ...[
+            const SizedBox(height: 8),
             Card(
               color: Colors.amber.shade50,
               child: ListTile(
-                leading:
-                    const Icon(Icons.account_balance_wallet),
+                leading: const Icon(
+                  Icons.account_balance_wallet_outlined,
+                ),
                 title: Text(
                   'Deuda anterior de prueba: '
                   '\$${_previousDebt.toStringAsFixed(2)}',
                 ),
                 subtitle: const Text(
-                  'En la versión real se consultará '
-                  'el saldo del cliente.',
+                  'Este saldo es ficticio y no proviene '
+                  'de una cuenta real.',
                 ),
               ),
             ),
+          ],
 
-          _sectionTitle('2. Productos'),
-
-          TextField(
-            controller: _searchController,
-            onChanged: (value) {
-              setState(() => _search = value);
-            },
-            decoration: const InputDecoration(
-              hintText: 'Buscar producto',
-              prefixIcon: Icon(Icons.search),
-              border: OutlineInputBorder(),
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          for (final product in filteredProducts)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.inventory_2_outlined,
-                      size: 28,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            product.name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            '\$${product.price.toStringAsFixed(2)}',
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Quitar uno',
-                      onPressed:
-                          (_quantities[product.name] ??
-                                      0) ==
-                                  0
-                              ? null
-                              : () => _changeQuantity(
-                                    product.name,
-                                    -1,
-                                  ),
-                      icon: const Icon(
-                        Icons.remove_circle_outline,
-                      ),
-                    ),
-                    Text(
-                      '${_quantities[product.name] ?? 0}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 17,
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Agregar uno',
-                      onPressed: () =>
-                          _changeQuantity(
-                        product.name,
-                        1,
-                      ),
-                      icon: const Icon(
-                        Icons.add_circle,
-                        color: Colors.green,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: _moneyRow(
-                'Total de productos',
-                _saleTotal,
-                bold: true,
-              ),
-            ),
-          ),
-
-          _sectionTitle('3. Venta y cobro'),
+          _sectionTitle('2. Tipo de operación'),
 
           DropdownButtonFormField<String>(
-            value: _saleType,
+            value: _operation,
+            isExpanded: true,
             decoration: const InputDecoration(
-              labelText: 'Tipo de venta',
+              labelText: '¿Qué vas a registrar?',
               border: OutlineInputBorder(),
             ),
             items: const [
               DropdownMenuItem(
-                value: 'Contado',
-                child: Text('Contado'),
+                value: 'Venta de contado',
+                child: Text('Venta de contado'),
               ),
               DropdownMenuItem(
-                value: 'Crédito',
-                child: Text('Crédito'),
+                value: 'Venta a crédito',
+                child: Text('Venta a crédito'),
+              ),
+              DropdownMenuItem(
+                value: 'Abono de deuda',
+                child: Text('Abono de deuda anterior'),
               ),
             ],
-            onChanged: (value) {
-              if (value != null) {
-                setState(() => _saleType = value);
-              }
-            },
+            onChanged: _changeOperation,
           ),
 
-          const SizedBox(height: 12),
+          if (!isDebtPayment) ...[
+            _sectionTitle('3. Productos'),
+
+            TextField(
+              controller: _searchController,
+              onChanged: (value) {
+                setState(() => _search = value);
+              },
+              decoration: const InputDecoration(
+                hintText: 'Buscar producto',
+                prefixIcon: Icon(Icons.search_rounded),
+                border: OutlineInputBorder(),
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            for (final product in filteredProducts)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.inventory_2_outlined,
+                        size: 26,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              product.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              '\$${product.price.toStringAsFixed(2)} '
+                              'por unidad',
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Quitar uno',
+                        onPressed:
+                            (_quantities[product.name] ?? 0) == 0
+                                ? null
+                                : () => _changeQuantity(
+                                      product.name,
+                                      -1,
+                                    ),
+                        icon: const Icon(
+                          Icons.remove_circle_outline_rounded,
+                        ),
+                      ),
+                      Text(
+                        '${_quantities[product.name] ?? 0}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Agregar uno',
+                        onPressed: () => _changeQuantity(
+                          product.name,
+                          1,
+                        ),
+                        icon: const Icon(
+                          Icons.add_circle_rounded,
+                          color: Colors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: _moneyRow(
+                  'Total de productos',
+                  _saleTotal,
+                  bold: true,
+                ),
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: 8),
+            const Card(
+              child: ListTile(
+                leading: Icon(Icons.payments_outlined),
+                title: Text('Cobrar deuda anterior'),
+                subtitle: Text(
+                  'No se agregarán productos a este '
+                  'borrador. Ingresa cuánto recibiste.',
+                ),
+              ),
+            ),
+          ],
+
+          _sectionTitle(
+            isDebtPayment ? '3. Registrar el abono' : '4. Forma de pago',
+          ),
 
           const Text(
-            'Ingresa cuánto recibiste por '
-            'cada forma de pago. Puedes usar '
-            'ambas para un pago mixto.',
+            'Puedes repartir el importe entre efectivo '
+            'y transferencia. Los importes se calculan '
+            'automáticamente.',
           ),
 
           const SizedBox(height: 12),
@@ -640,46 +668,60 @@ class _SalesInvoiceScreenState
             ],
           ),
 
-          _sectionTitle('4. Resumen'),
+          _sectionTitle('5. Resumen de la operación'),
 
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  _moneyRow(
-                    'Deuda anterior',
-                    _previousDebt,
-                  ),
-                  _moneyRow(
-                    'Venta de hoy',
-                    _saleTotal,
-                  ),
-                  const Divider(),
-                  _moneyRow(
-                    'Total por cobrar',
-                    _previousDebt + _saleTotal,
-                    bold: true,
-                  ),
-                  _moneyRow(
-                    'Efectivo recibido',
-                    _cash,
-                  ),
-                  _moneyRow(
-                    'Transferencia recibida',
-                    _transfer,
-                  ),
-                  _moneyRow(
-                    'Total recibido',
-                    _received,
-                    bold: true,
-                  ),
-                  const Divider(),
-                  _moneyRow(
-                    'Saldo pendiente',
-                    _remainingDebt,
-                    bold: true,
-                  ),
+                  if (isDebtPayment) ...[
+                    _moneyRow(
+                      'Deuda anterior',
+                      _previousDebt,
+                    ),
+                    const Divider(),
+                    _moneyRow(
+                      'Abono recibido',
+                      _received,
+                    ),
+                    const Divider(),
+                    _moneyRow(
+                      'Deuda restante estimada',
+                      (_previousDebt - _received)
+                          .clamp(0.0, double.infinity)
+                          .toDouble(),
+                      bold: true,
+                    ),
+                  ] else ...[
+                    _moneyRow(
+                      'Deuda anterior',
+                      _previousDebt,
+                    ),
+                    _moneyRow(
+                      'Venta de hoy',
+                      _saleTotal,
+                    ),
+                    const Divider(),
+                    _moneyRow(
+                      'Total por cobrar',
+                      _totalDue,
+                      bold: true,
+                    ),
+                    _moneyRow('Efectivo recibido', _cash),
+                    _moneyRow('Transferencia recibida', _transfer),
+                    _moneyRow(
+                      'Total recibido',
+                      _received,
+                      bold: true,
+                    ),
+                    const Divider(),
+                    _moneyRow(
+                      'Saldo pendiente estimado',
+                      _remainingDebt,
+                      bold: true,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -687,24 +729,23 @@ class _SalesInvoiceScreenState
 
           const Card(
             child: ListTile(
-              leading: Icon(Icons.receipt_long),
-              title: Text('Factura automática'),
+              leading: Icon(Icons.receipt_long_rounded),
+              title: Text('Factura pendiente de integración'),
               subtitle: Text(
-                'El número definitivo se '
-                'generará al conectar el '
-                'registro seguro de ventas. '
-                'Esta prueba no emite facturas.',
+                'El número definitivo se asignará al conectar '
+                'el registro de ventas. Esta pantalla no '
+                'emite facturas.',
               ),
             ),
           ),
 
-          const SizedBox(height: 12),
+          _sectionTitle('Observaciones'),
 
           TextField(
             controller: _notesController,
             maxLines: 2,
             decoration: const InputDecoration(
-              labelText: 'Observaciones',
+              hintText: 'Notas de la venta o del cobro',
               border: OutlineInputBorder(),
             ),
           ),
@@ -714,18 +755,15 @@ class _SalesInvoiceScreenState
           FilledButton.icon(
             onPressed: _saveDraft,
             icon: const Icon(Icons.save_outlined),
-            label: const Text(
-              'Guardar borrador de prueba',
-            ),
+            label: const Text('Guardar borrador de prueba'),
           ),
 
           const SizedBox(height: 12),
 
           const Text(
-            'Este botón NO registra ventas, '
-            'cobros, facturas ni movimientos '
-            'de inventario. Los borradores '
-            'se pierden al cerrar esta pantalla.',
+            'Los borradores solo existen mientras esta pantalla '
+            'permanezca abierta. No modifican inventario, '
+            'deudas, caja, facturas ni Google Sheets.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12,
@@ -738,10 +776,11 @@ class _SalesInvoiceScreenState
           if (_drafts.isEmpty)
             const Card(
               child: ListTile(
+                leading: Icon(Icons.receipt_long_outlined),
                 title: Text('Sin borradores'),
                 subtitle: Text(
-                  'Prueba la selección de ruta, '
-                  'cliente y productos.',
+                  'Crea una venta o un abono para probar '
+                  'el resumen.',
                 ),
               ),
             ),
@@ -749,23 +788,29 @@ class _SalesInvoiceScreenState
           for (final draft in _drafts)
             Card(
               child: ExpansionTile(
-                leading:
-                    const Icon(Icons.receipt_long),
+                leading: const Icon(
+                  Icons.receipt_long_rounded,
+                ),
                 title: Text(draft.customer),
                 subtitle: Text(
-                  '${draft.route} · '
-                  'Venta \$${draft.saleTotal.toStringAsFixed(2)}',
+                  '${draft.operation} · ${draft.route}',
                 ),
                 children: [
-                  for (final entry
-                      in draft.items.entries)
-                    ListTile(
-                      dense: true,
-                      title: Text(entry.key),
-                      trailing: Text(
-                        '${entry.value} unidades',
+                  if (draft.items.isNotEmpty)
+                    for (final entry in draft.items.entries)
+                      ListTile(
+                        dense: true,
+                        title: Text(entry.key),
+                        trailing: Text(
+                          '${entry.value} unidades',
+                        ),
                       ),
+                  ListTile(
+                    title: const Text('Total de venta'),
+                    trailing: Text(
+                      '\$${draft.total.toStringAsFixed(2)}',
                     ),
+                  ),
                   ListTile(
                     title: const Text('Efectivo'),
                     trailing: Text(
@@ -779,16 +824,14 @@ class _SalesInvoiceScreenState
                     ),
                   ),
                   ListTile(
-                    title: const Text(
-                      'Saldo pendiente estimado',
-                    ),
+                    title: const Text('Saldo pendiente estimado'),
                     trailing: Text(
                       '\$${draft.remainingDebt.toStringAsFixed(2)}',
                     ),
                   ),
                   if (draft.notes.isNotEmpty)
                     ListTile(
-                      title: const Text('Notas'),
+                      title: const Text('Observaciones'),
                       subtitle: Text(draft.notes),
                     ),
                 ],
